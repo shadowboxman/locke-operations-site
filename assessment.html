@@ -311,13 +311,19 @@
     border: 1px solid var(--border);
   }
   .gate-box strong { display: block; font-size: 17px; margin-bottom: 6px; }
+  .gate-box .gate-fields { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+  .gate-box .gate-row { display: flex; gap: 8px; }
+  .gate-box .gate-row > input { flex: 1; margin: 0; }
+  .gate-box .gate-sub { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+  .gate-box .gate-error { font-size: 13px; color: var(--danger); margin-top: 8px; min-height: 18px; }
+  .gate-box input[disabled] { opacity: 0.6; }
   .gate-box input {
     width: 100%;
     padding: 12px 14px;
+    margin: 0;
     border: 1.5px solid var(--border);
     border-radius: 8px;
     font-size: 15px;
-    margin: 14px 0;
     font-family: inherit;
   }
   .gate-box input:focus { outline: none; border-color: var(--accent); }
@@ -530,6 +536,65 @@
 <div class="app" id="app"></div>
 
 <script>
+/* === HUBSPOT FORMS API ===
+   Test portal (na2) — Locke Operations developer test account.
+   To flip to production: replace the portal ID + form ID below with the
+   production values, no other changes required. */
+const HUBSPOT_PORTAL_ID = '246275387';
+const HUBSPOT_FORM_ID = '65e1f980-56ca-4c25-90a7-ce0289ca608e';
+const HUBSPOT_ENDPOINT = `https://api.hsforms.com/submissions/v3/integration/submit/${HUBSPOT_PORTAL_ID}/${HUBSPOT_FORM_ID}`;
+
+/* Maps from assessment internal codes to HubSpot dropdown values
+   (must match the dropdown options exactly, case-sensitive). */
+const HS_INDUSTRY_MAP = {
+  trades: 'Trades',
+  restoration: 'Restoration',
+  hospitality: 'Hospitality',
+  ae: 'A&E',
+  other: 'Other'
+};
+const HS_RESPONSE_MAP = {
+  fast: 'Under 5 minutes',
+  hour: 'Within an hour',
+  day: 'Same day',
+  slow: 'Next day or later'
+};
+const HS_BAND_MAP = { high: 'High', mid: 'Mid', low: 'Low' };
+
+function buildHubSpotPayload(contact, a, r) {
+  const topWins = (r.wins || [])
+    .map(w => `${w.name} - $${w.value.toLocaleString()}/yr`)
+    .join(' | ');
+  return {
+    fields: [
+      { name: 'email', value: contact.email },
+      { name: 'firstname', value: contact.firstname },
+      { name: 'lastname', value: contact.lastname },
+      { name: 'company', value: contact.company },
+      { name: 'assessment_industry', value: HS_INDUSTRY_MAP[a.industry] || 'Other' },
+      { name: 'assessment_team_size', value: a.team },
+      { name: 'assessment_selected_tasks', value: (a.tasks || []).join(', ') },
+      { name: 'assessment_admin_hours_per_week', value: a.hours },
+      { name: 'assessment_loaded_hourly_rate', value: a.rate },
+      { name: 'assessment_response_time', value: HS_RESPONSE_MAP[a.response] || '' },
+      { name: 'assessment_monthly_leads', value: a.leads },
+      { name: 'assessment_avg_lead_value', value: a.value },
+      { name: 'assessment_system_maturity_score', value: a.maturity },
+      { name: 'assessment_process_consistency_score', value: a.consistency },
+      { name: 'assessment_readiness_score', value: r.readiness },
+      { name: 'assessment_readiness_band', value: HS_BAND_MAP[r.band] || '' },
+      { name: 'assessment_annual_midpoint', value: r.total },
+      { name: 'assessment_low_estimate', value: r.low },
+      { name: 'assessment_high_estimate', value: r.high },
+      { name: 'assessment_top_wins', value: topWins }
+    ],
+    context: {
+      pageUri: window.location.href,
+      pageName: 'Locke Operations Assessment'
+    }
+  };
+}
+
 /* === SEGMENT MAP ===
    Each segment defines the resonant exception work for that audience,
    plus framing labels used in downstream questions. Task metadata
@@ -1042,9 +1107,17 @@ function renderResults() {
           <div class="gate-overlay">
             <div class="gate-box">
               <strong>See the ${r.wins.length} automations we'd start with</strong>
-              <div style="font-size:13px; color:var(--ink-2); margin-top:6px">Plus the difficulty and dollar value of each. We'll email the full report.</div>
-              <input type="email" id="email" placeholder="you@yourcompany.com">
+              <div class="gate-sub">Plus the difficulty and dollar value of each. We'll email the full report within one business day.</div>
+              <div class="gate-fields">
+                <div class="gate-row">
+                  <input type="text" id="gate-firstname" placeholder="First name" autocomplete="given-name">
+                  <input type="text" id="gate-lastname" placeholder="Last name" autocomplete="family-name">
+                </div>
+                <input type="text" id="gate-company" placeholder="Company name" autocomplete="organization">
+                <input type="email" id="gate-email" placeholder="you@yourcompany.com" autocomplete="email">
+              </div>
               <button class="btn btn-primary btn-block" id="unlock">Email me the report</button>
+              <div class="gate-error" id="gate-error"></div>
             </div>
           </div>
         </div>
@@ -1070,14 +1143,60 @@ function renderResults() {
   if (!state.emailUnlocked) {
     const unlockBtn = document.getElementById('unlock');
     if (unlockBtn) {
-      unlockBtn.onclick = () => {
-        const eInput = document.getElementById('email');
-        const e = eInput.value.trim();
-        if (!e || !e.includes('@') || !e.includes('.')) {
-          eInput.style.borderColor = 'var(--danger)';
-          eInput.focus();
+      unlockBtn.onclick = async () => {
+        const firstnameInput = document.getElementById('gate-firstname');
+        const lastnameInput = document.getElementById('gate-lastname');
+        const companyInput = document.getElementById('gate-company');
+        const emailInput = document.getElementById('gate-email');
+        const errorEl = document.getElementById('gate-error');
+        const inputs = [firstnameInput, lastnameInput, companyInput, emailInput];
+
+        // Reset visual error state
+        inputs.forEach(i => i.style.borderColor = '');
+        errorEl.textContent = '';
+
+        // Validate
+        const firstname = firstnameInput.value.trim();
+        const lastname = lastnameInput.value.trim();
+        const company = companyInput.value.trim();
+        const email = emailInput.value.trim();
+        const missing = [];
+        if (!firstname) { missing.push(firstnameInput); }
+        if (!lastname) { missing.push(lastnameInput); }
+        if (!company) { missing.push(companyInput); }
+        if (!email || !email.includes('@') || !email.includes('.')) { missing.push(emailInput); }
+        if (missing.length) {
+          missing.forEach(i => i.style.borderColor = 'var(--danger)');
+          errorEl.textContent = 'Please fill in all four fields with a valid email.';
+          missing[0].focus();
           return;
         }
+
+        // Disable while submitting
+        unlockBtn.disabled = true;
+        const originalText = unlockBtn.textContent;
+        unlockBtn.textContent = 'Sending...';
+        inputs.forEach(i => i.disabled = true);
+
+        // Build HubSpot payload
+        const r = calculate();
+        const payload = buildHubSpotPayload({ firstname, lastname, company, email }, state.answers, r);
+
+        try {
+          const response = await fetch(HUBSPOT_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!response.ok) {
+            const text = await response.text();
+            console.error('HubSpot submit failed:', response.status, text);
+          }
+        } catch (err) {
+          console.error('HubSpot submit network error:', err);
+        }
+
+        // Unlock content regardless of HubSpot success (user still gets value)
         state.emailUnlocked = true;
         render();
       };
