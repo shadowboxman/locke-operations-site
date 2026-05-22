@@ -907,7 +907,10 @@ function calculate() {
     : a.response === 'slow' ? 0.025 : 0;
   const leadValue = (a.leads || 0) * 12 * (a.value || 0) * responseLift;
 
-  const errorReduction = (a.team || 1) * 1500;
+  // Error reduction: 20% of time savings (IDC heuristic — data professionals waste
+  // ~20% of time replicating work that already exists). Replaces the prior unsourced
+  // team * $1500 formula on 2026-05-23. See /Playbooks/Assessment Scoring Algorithm.md.
+  const errorReduction = Math.round(timeSavings * 0.20);
 
   const total = Math.round(timeSavings + leadValue + errorReduction);
   const low = Math.round(total * 0.7);
