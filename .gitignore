@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor junk
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OneDrive sync conflicts
+*conflict*

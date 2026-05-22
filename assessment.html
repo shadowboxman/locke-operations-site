@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Locke Operations — Value Leakage Assessment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F4F1EA;
+    --card: #FAF8F2;
+    --ink: #1A2332;
+    --ink-2: #2C3744;
+    --muted: #A8A6A0;
+    --accent: #F25A1A;
+    --accent-2: #C8470E;
+    --accent-soft: #FDEAD9;
+    --border: rgba(26, 35, 50, 0.12);
+    --border-strong: rgba(26, 35, 50, 0.22);
+    --warning: #C97A4A;
+    --danger: #C8102E;
+    --shadow: none;
+    --radius: 0px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  .app {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+  }
+  .brand {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+  .progress-wrap {
+    height: 6px;
+    background: var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 32px;
+  }
+  .progress-bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.4s ease;
+  }
+  .card {
+    background: var(--card);
+    border-radius: 20px;
+    padding: 40px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+  }
+  h1 {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 12px;
+  }
+  h2 {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    letter-spacing: -0.3px;
+  }
+  .helper {
+    color: var(--ink-2);
+    font-size: 15px;
+    margin-bottom: 28px;
+  }
+  .options { display: grid; gap: 10px; }
+  .opt {
+    display: block;
+    padding: 16px 18px;
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 15px;
+    font-weight: 500;
+    background: white;
+    user-select: none;
+  }
+  .opt:hover { border-color: var(--accent); background: #f0fdf4; }
+  .opt.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-2); }
+  .opts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .slider-wrap { margin: 32px 0 16px; }
+  .slider-value {
+    font-size: 56px;
+    font-weight: 800;
+    color: var(--accent);
+    text-align: center;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .slider-label {
+    text-align: center;
+    color: var(--ink-2);
+    margin-bottom: 24px;
+    font-size: 14px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  input[type=range] {
+    width: 100%;
+    accent-color: var(--accent);
+    height: 6px;
+  }
+  .nav {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 32px;
+    gap: 12px;
+    align-items: center;
+  }
+  .btn {
+    padding: 14px 28px;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: var(--accent-2); }
+  .btn-primary:disabled { background: var(--muted); cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--ink-2); }
+  .btn-ghost:hover { color: var(--ink); }
+  .btn-block { width: 100%; }
+  .step-meta {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .cover h1 { font-size: 40px; margin-bottom: 16px; }
+  .cover .lead { font-size: 18px; color: var(--ink-2); margin-bottom: 32px; }
+  .cover .reassure { font-size: 14px; color: var(--muted); margin-top: 16px; }
+
+  .hero-money {
+    text-align: center;
+    padding: 44px 24px;
+    background: linear-gradient(135deg, #064e3b 0%, #059669 100%);
+    color: white;
+    border-radius: 20px;
+    margin-bottom: 24px;
+    box-shadow: 0 20px 40px rgba(5, 150, 105, 0.2);
+  }
+  .hero-money .label {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    opacity: 0.85;
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+  .hero-money .amount {
+    font-size: 52px;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1;
+  }
+  .hero-money .subtitle {
+    font-size: 15px;
+    opacity: 0.9;
+    margin-top: 16px;
+    max-width: 520px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .twocol {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .panel {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+  }
+  .panel h3 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--ink-2);
+    margin-bottom: 16px;
+    font-weight: 700;
+  }
+  .breakdown-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    font-size: 14px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .breakdown-row:last-child {
+    border-bottom: none;
+    font-weight: 700;
+    padding-top: 14px;
+    margin-top: 4px;
+    border-top: 1px solid var(--ink);
+    font-size: 15px;
+  }
+  .gauge { text-align: center; padding: 8px 0; }
+  .gauge-num {
+    font-size: 56px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .gauge-max { color: var(--muted); font-size: 18px; font-weight: 600; }
+  .gauge-label {
+    font-size: 14px;
+    margin-top: 8px;
+    font-weight: 600;
+  }
+  .gauge-bar {
+    height: 8px;
+    background: var(--border);
+    border-radius: 999px;
+    margin-top: 16px;
+    overflow: hidden;
+  }
+  .gauge-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.8s ease;
+  }
+  .wins { display: grid; gap: 12px; margin-top: 8px; }
+  .win-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: center;
+    background: white;
+  }
+  .win-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .win-meta { font-size: 13px; color: var(--ink-2); }
+  .win-value {
+    font-weight: 700;
+    color: var(--accent);
+    font-size: 18px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .diff {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    margin-left: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    vertical-align: middle;
+  }
+  .diff-easy { background: #d1fae5; color: #065f46; }
+  .diff-med { background: #fef3c7; color: #92400e; }
+  .diff-hard { background: #fee2e2; color: #991b1b; }
+
+  .gate-wrap { position: relative; margin: 24px 0; }
+  .gated { filter: blur(6px); pointer-events: none; user-select: none; opacity: 0.85; }
+  .gate-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(247, 248, 250, 0.4);
+    backdrop-filter: blur(2px);
+    border-radius: 16px;
+    padding: 16px;
+  }
+  .gate-box {
+    background: white;
+    border-radius: 14px;
+    padding: 28px;
+    text-align: center;
+    max-width: 380px;
+    width: 100%;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.15);
+    border: 1px solid var(--border);
+  }
+  .gate-box strong { display: block; font-size: 17px; margin-bottom: 6px; }
+  .gate-box input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 15px;
+    margin: 14px 0;
+    font-family: inherit;
+  }
+  .gate-box input:focus { outline: none; border-color: var(--accent); }
+
+  .holdback {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin: 24px 0;
+  }
+  .holdback h4 {
+    font-size: 13px;
+    color: #92400e;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    font-weight: 700;
+  }
+  .holdback p { font-size: 14px; color: #78350f; line-height: 1.55; }
+
+  .cta-section {
+    background: var(--ink);
+    color: white;
+    border-radius: 20px;
+    padding: 36px 32px;
+    text-align: center;
+    margin-top: 32px;
+  }
+  .cta-section h3 { font-size: 22px; margin-bottom: 8px; font-weight: 700; }
+  .cta-section p { opacity: 0.7; margin-bottom: 24px; font-size: 15px; }
+  .cta-row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .btn-light { background: white; color: var(--ink); }
+  .btn-light:hover { background: #f1f5f9; }
+  .btn-outline {
+    background: transparent;
+    color: white;
+    border: 1.5px solid rgba(255,255,255,0.3);
+  }
+  .btn-outline:hover { border-color: white; }
+
+  .fade-in { animation: fadeIn 0.35s ease; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .footnote {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 24px;
+  }
+
+  @media (max-width: 600px) {
+    .card { padding: 28px 22px; }
+    h1 { font-size: 26px; }
+    .cover h1 { font-size: 28px; }
+    .twocol { grid-template-columns: 1fr; }
+    .opts-grid { grid-template-columns: 1fr; }
+    .hero-money .amount { font-size: 36px; }
+    .app { padding: 24px 16px 60px; }
+  }
+
+  /* === LOCKE OPERATIONS BRAND OVERRIDE === */
+  .card,
+  .card.cover,
+  .panel,
+  .slider-track,
+  .slider-thumb,
+  .cta-section,
+  .result-card,
+  .option,
+  input,
+  select,
+  textarea {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+  }
+  .progress-wrap {
+    background: var(--border);
+    border-radius: 0 !important;
+    height: 2px;
+  }
+  .progress-bar {
+    background: var(--accent);
+    border-radius: 0 !important;
+  }
+  .brand {
+    font-family: "IBM Plex Mono", monospace !important;
+    font-size: 11px !important;
+    letter-spacing: 0.14em !important;
+    font-weight: 500 !important;
+    color: var(--accent) !important;
+    text-transform: uppercase;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  h1 {
+    font-family: "IBM Plex Sans", sans-serif !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.02em;
+    line-height: 1.1 !important;
+  }
+  h2 {
+    font-family: "IBM Plex Sans", sans-serif !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.015em;
+    line-height: 1.15 !important;
+  }
+  h3 {
+    font-family: "IBM Plex Sans", sans-serif !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em;
+  }
+  .btn,
+  .btn-primary,
+  .btn-ghost,
+  button {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    font-family: "IBM Plex Mono", monospace !important;
+    font-size: 12px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-weight: 500;
+  }
+  .btn-primary {
+    background: var(--accent) !important;
+    color: var(--bg) !important;
+  }
+  .btn-primary:hover {
+    background: var(--ink) !important;
+    color: var(--bg) !important;
+  }
+  .btn-ghost {
+    background: transparent !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--ink) !important;
+  }
+  .btn-ghost:hover {
+    background: var(--ink) !important;
+    color: var(--bg) !important;
+  }
+  .option {
+    border: 1px solid var(--border-strong);
+  }
+  .option:hover {
+    border-color: var(--ink);
+    background: var(--card);
+  }
+  .option.selected {
+    border-color: var(--accent) !important;
+    background: var(--accent-soft) !important;
+  }
+  .step-meta {
+    font-family: "IBM Plex Mono", monospace !important;
+    font-size: 10px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+  }
+  .helper, .reassure {
+    color: var(--ink-2);
+  }
+  .cta-section {
+    background: var(--ink) !important;
+    color: var(--bg) !important;
+    border: none !important;
+  }
+  .cta-section h3,
+  .cta-section p {
+    color: var(--bg) !important;
+  }
+  .btn-light {
+    background: var(--bg) !important;
+    color: var(--ink) !important;
+    border-radius: 0 !important;
+  }
+  .btn-light:hover {
+    background: var(--accent) !important;
+    color: var(--bg) !important;
+  }
+  .btn-outline {
+    background: transparent !important;
+    color: var(--bg) !important;
+    border: 1px solid rgba(244, 241, 234, 0.4) !important;
+    border-radius: 0 !important;
+  }
+  .btn-outline:hover {
+    border-color: var(--bg) !important;
+    background: rgba(244, 241, 234, 0.1) !important;
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+
+<script>
+/* === SEGMENT MAP ===
+   Each segment defines the resonant exception work for that audience,
+   plus framing labels used in downstream questions. Task metadata
+   (hours, diff, name) is embedded so the wins calc reads directly. */
+const SEGMENTS = {
+  trades: {
+    label: 'Specialty trades (HVAC, electrical, plumbing, mechanical, general contractors)',
+    intakeLabel: 'lead or service request',
+    intakeUnit: 'job',
+    valueLabel: 'average job value',
+    tasks: [
+      { v: 'lien_waivers',   label: 'Lien waiver chase and filing',                                  hours: 6, diff: 2, name: 'Lien waiver tracking and filing' },
+      { v: 'est_followup',   label: 'Estimate follow-up sequence (email and text)',                  hours: 3, diff: 1, name: 'Estimate follow-up sequence' },
+      { v: 'ap_intake',      label: 'Vendor bill intake and purchase-order matching',                hours: 5, diff: 2, name: 'Vendor bill intake with three-way matching' },
+      { v: 'review_chase',   label: 'Post-job review request and response workflow',                 hours: 3, diff: 1, name: 'Review request and response workflow' },
+      { v: 'ar_collections', label: 'Collections from general contractors',                          hours: 4, diff: 2, name: 'Automated collections workflow' },
+      { v: 'change_orders',  label: 'Change order tracking and approval routing',                    hours: 4, diff: 2, name: 'Change order workflow' },
+      { v: 'coi_subs',       label: 'Subcontractor insurance certificate tracking and chase',        hours: 3, diff: 1, name: 'Subcontractor insurance tracking and renewal' },
+      { v: 'aia',            label: 'Owner pay-application reconciliation',                          hours: 5, diff: 2, name: 'Pay-application generation and reconciliation' },
+      { v: 'cert_payroll',   label: 'Certified payroll and prevailing-wage reporting',               hours: 4, diff: 2, name: 'Certified payroll automation' },
+      { v: 'data_entry',     label: 'Manual data entry between your systems',                        hours: 4, diff: 1, name: 'Cross-system data sync' }
+    ]
+  },
+  restoration: {
+    label: 'Restoration contractors (water, fire, mold, mitigation)',
+    intakeLabel: 'loss notification',
+    intakeUnit: 'claim',
+    valueLabel: 'average claim value',
+    tasks: [
+      { v: 'supplements',     label: 'Claim supplement workflow (tracking, packaging, submission)',  hours: 6, diff: 2, name: 'Supplement workflow' },
+      { v: 'adjuster_cadence',label: 'Adjuster and property-manager relationship cadence',           hours: 4, diff: 2, name: 'Adjuster relationship cadence' },
+      { v: 'adjuster_chase',  label: 'Adjuster communication and approval chase',                    hours: 5, diff: 2, name: 'Adjuster communication workflow' },
+      { v: 'post_job_review', label: 'Post-job satisfaction survey and review workflow',             hours: 2, diff: 1, name: 'Post-job review workflow' },
+      { v: 'photo_docs',      label: 'Photo documentation and tagging',                              hours: 3, diff: 1, name: 'Photo intake, tagging, and routing' },
+      { v: 'mortgage_holder', label: 'Mortgage holder coordination',                                 hours: 3, diff: 2, name: 'Mortgage holder coordination automation' },
+      { v: 'ap_intake_rest',  label: 'Vendor bill intake and equipment tracking',                    hours: 3, diff: 1, name: 'Vendor bill intake and equipment ledger' },
+      { v: 'subro',           label: 'Subrogation package preparation',                              hours: 3, diff: 2, name: 'Subrogation package generation' },
+      { v: 'job_profit',      label: 'Job profitability reporting',                                  hours: 3, diff: 2, name: 'Automated job profitability reporting' },
+      { v: 'data_entry',      label: 'Manual data entry between your systems',                       hours: 4, diff: 1, name: 'Cross-system data sync' }
+    ]
+  },
+  hospitality: {
+    label: 'Hospitality (hotels, restaurants, event venues, catering)',
+    intakeLabel: 'booking or event inquiry',
+    intakeUnit: 'booking or event',
+    valueLabel: 'average booking or event value',
+    tasks: [
+      { v: 'vendor_invoices', label: 'Vendor invoice intake and food and beverage cost matching',    hours: 5, diff: 2, name: 'Vendor invoice processing and cost matching' },
+      { v: 'review_response', label: 'Review response automation across booking platforms and review sites', hours: 5, diff: 2, name: 'Review response automation' },
+      { v: 'ota_recon',       label: 'Booking-platform commission reconciliation',                  hours: 5, diff: 2, name: 'Booking-platform commission reconciliation' },
+      { v: 'guest_reengage',  label: 'Past-guest re-engagement and loyalty workflow',                hours: 4, diff: 2, name: 'Guest re-engagement workflow' },
+      { v: 'labor_sched',     label: 'Labor scheduling against revenue forecast',                    hours: 4, diff: 2, name: 'Forecast-based labor scheduling' },
+      { v: 'beo',             label: 'Group event order management and quoting',                     hours: 4, diff: 2, name: 'Event order workflow and quoting' },
+      { v: 'tax_remit',       label: 'Multi-jurisdiction tax remittance (occupancy, sales, tips)',   hours: 3, diff: 2, name: 'Tax remittance automation' },
+      { v: 'tip_pool',        label: 'Tip pool reconciliation and payroll integration',              hours: 3, diff: 1, name: 'Tip pool reconciliation' },
+      { v: 'folio_recon',     label: 'Guest folio and event billing reconciliation',                 hours: 3, diff: 2, name: 'Folio and event billing reconciliation' },
+      { v: 'data_entry',      label: 'Manual data entry between booking, point-of-sale, and accounting systems', hours: 4, diff: 1, name: 'Booking-to-accounting data sync' }
+    ]
+  },
+  ae: {
+    label: 'Architecture or engineering firm',
+    intakeLabel: 'proposal or new inquiry',
+    intakeUnit: 'project',
+    valueLabel: 'average project fee',
+    tasks: [
+      { v: 'wip',              label: 'Project profitability and work-in-progress reporting',        hours: 5, diff: 2, name: 'Automated profitability reporting' },
+      { v: 'rfp_packet',       label: 'Proposal response packet assembly',                           hours: 6, diff: 2, name: 'Proposal packet assembly' },
+      { v: 'timesheets',       label: 'Timesheet reconciliation and project coding',                 hours: 4, diff: 1, name: 'Timesheet reconciliation automation' },
+      { v: 'client_touch',     label: 'Quarterly client touchpoint workflow',                        hours: 3, diff: 1, name: 'Client touchpoint workflow' },
+      { v: 'rfis',             label: 'Field question and submittal log management',                 hours: 4, diff: 2, name: 'Field question and submittal automation' },
+      { v: 'invoicing_ae',     label: 'Multi-phase invoicing and collections',                       hours: 4, diff: 2, name: 'Multi-phase invoicing automation' },
+      { v: 'change_orders_ae', label: 'Change order and addendum tracking',                          hours: 4, diff: 2, name: 'Change order tracking workflow' },
+      { v: 'subconsultants',   label: 'Subconsultant coordination and tracking',                     hours: 3, diff: 2, name: 'Subconsultant coordination workflow' },
+      { v: 'dcaa',             label: 'Federal contract audit and indirect-rate compliance',         hours: 3, diff: 2, name: 'Federal contract compliance reporting' },
+      { v: 'data_entry',       label: 'Manual data entry between your systems',                      hours: 4, diff: 1, name: 'Cross-system data sync' }
+    ]
+  },
+  other: {
+    label: 'Other admin-heavy service business',
+    intakeLabel: 'inquiry',
+    intakeUnit: 'customer',
+    valueLabel: 'average customer value',
+    tasks: [
+      { v: 'cust_followup', label: 'Customer follow-up and review management',                       hours: 3, diff: 1, name: 'Customer follow-up workflow' },
+      { v: 'invoicing',  label: 'Invoicing and payment chase',                                       hours: 3, diff: 1, name: 'Invoicing and payment automation' },
+      { v: 'lead_intake',label: 'Lead intake routing and first-response',                            hours: 3, diff: 1, name: 'Lead intake automation' },
+      { v: 'scheduling', label: 'Scheduling and calendar coordination',                              hours: 3, diff: 1, name: 'Scheduling automation' },
+      { v: 'followup',   label: 'Service reminders and appointment confirmations',                   hours: 4, diff: 1, name: 'Reminder and confirmation automation' },
+      { v: 'onboarding', label: 'Client onboarding workflow',                                        hours: 4, diff: 2, name: 'Client onboarding automation' },
+      { v: 'reporting',  label: 'Reporting and dashboards',                                          hours: 3, diff: 2, name: 'Reporting automation' },
+      { v: 'compliance', label: 'Compliance documentation',                                          hours: 3, diff: 2, name: 'Compliance documentation workflow' },
+      { v: 'recon',      label: 'Cross-system reconciliation',                                       hours: 4, diff: 2, name: 'Cross-system reconciliation' },
+      { v: 'data_entry', label: 'Manual data entry between systems',                                 hours: 4, diff: 1, name: 'Cross-system data sync' }
+    ]
+  }
+};
+
+function seg() {
+  return SEGMENTS[state.answers.industry] || SEGMENTS.other;
+}
+function getTaskMeta(taskId) {
+  const s = seg();
+  return s.tasks.find(t => t.v === taskId) || null;
+}
+
+const QUESTIONS = [
+  {
+    id: 'industry',
+    title: 'What kind of business do you run?',
+    helper: 'This shapes the rest of the assessment so the questions actually resonate with your work.',
+    type: 'single',
+    options: Object.entries(SEGMENTS).map(([k, v]) => ({ v: k, label: v.label }))
+  },
+  {
+    id: 'team',
+    title: 'How many people work in your business?',
+    helper: 'Counting yourself, full and part time.',
+    type: 'single',
+    grid: true,
+    options: [
+      { v: 1, label: 'Just me' },
+      { v: 3, label: '2 to 5' },
+      { v: 12, label: '6 to 20' },
+      { v: 30, label: '21 to 50' },
+      { v: 60, label: '50+' }
+    ]
+  },
+  {
+    id: 'tasks',
+    title: "Which of these eat your team's time?",
+    helper: 'Pick all that apply. Each one maps to a productized workflow we build.',
+    type: 'multi',
+    getOptions: () => seg().tasks.map(t => ({ v: t.v, label: t.label }))
+  },
+  {
+    id: 'hours',
+    title: 'Combined, how many hours per week do those tasks take?',
+    helper: 'Add up across your whole team. A best guess is fine.',
+    type: 'slider',
+    min: 1, max: 80, default: 15, unit: 'hours per week'
+  },
+  {
+    id: 'rate',
+    title: "What's the loaded hourly cost of the people doing this work?",
+    helper: 'Salary plus benefits, divided by working hours. A rough estimate works.',
+    type: 'single',
+    grid: true,
+    options: [
+      { v: 18, label: 'Under $20/hr' },
+      { v: 30, label: '$20 to $40/hr' },
+      { v: 55, label: '$40 to $75/hr' },
+      { v: 90, label: '$75/hr or more' }
+    ]
+  },
+  {
+    id: 'response',
+    getTitle: () => `How fast do you typically respond to a new ${seg().intakeLabel}?`,
+    helper: 'From inbound to first human reply.',
+    type: 'single',
+    options: [
+      { v: 'fast', label: 'Under 5 minutes' },
+      { v: 'hour', label: 'Within an hour' },
+      { v: 'day', label: 'Same day' },
+      { v: 'slow', label: 'Next day or later' }
+    ]
+  },
+  {
+    id: 'leads',
+    getTitle: () => `Roughly how many new ${seg().intakeUnit}s per month?`,
+    getHelper: () => `Across all channels combined. Best guess is fine.`,
+    type: 'single',
+    grid: true,
+    options: [
+      { v: 5, label: 'Under 10' },
+      { v: 25, label: '10 to 50' },
+      { v: 100, label: '50 to 200' },
+      { v: 350, label: '200+' }
+    ]
+  },
+  {
+    id: 'value',
+    getTitle: () => `What's your ${seg().valueLabel}?`,
+    helper: 'Best estimate. We only use this to size your dollar number.',
+    type: 'single',
+    grid: true,
+    options: [
+      { v: 75, label: 'Under $100' },
+      { v: 300, label: '$100 to $500' },
+      { v: 1200, label: '$500 to $2,000' },
+      { v: 5000, label: '$2,000 to $10,000' },
+      { v: 20000, label: '$10,000+' }
+    ]
+  },
+  {
+    id: 'maturity',
+    title: 'How does most of your work get tracked today?',
+    helper: 'Be honest. This is the single biggest predictor of automation success.',
+    type: 'single',
+    options: [
+      { v: 5, label: "Paper, whiteboards, or in someone's head" },
+      { v: 20, label: 'Spreadsheets, mostly' },
+      { v: 35, label: "A mix of apps that don't talk to each other" },
+      { v: 50, label: 'One integrated platform that runs the business' }
+    ]
+  },
+  {
+    id: 'consistency',
+    title: 'How standardized are your repeat tasks?',
+    helper: 'Same steps every time, or judgment calls?',
+    type: 'single',
+    options: [
+      { v: 5, label: 'Every customer or job is custom' },
+      { v: 22, label: 'Mostly similar with some variation' },
+      { v: 35, label: 'Highly repeatable, same steps each time' }
+    ]
+  }
+];
+
+/* TASK_MAP removed — task metadata now lives inside SEGMENTS.
+   Use getTaskMeta(taskId) to look up the active segment's task. */
+
+const state = {
+  step: -1,
+  answers: {},
+  emailUnlocked: false
+};
+
+const app = document.getElementById('app');
+
+function render() {
+  app.innerHTML = '';
+  if (state.step === -1) return renderCover();
+  if (state.step >= QUESTIONS.length) return renderResults();
+  renderQuestion();
+}
+
+function renderCover() {
+  const el = document.createElement('div');
+  el.className = 'fade-in';
+  el.innerHTML = `
+    <div class="brand"><a href="index.html">← Locke Operations</a> · Value Leakage Assessment</div>
+    <div class="card cover" style="padding: 48px 36px;">
+      <h1>How much margin is your back office quietly losing?</h1>
+      <p class="lead">Ten quick questions. You'll get a defensible dollar range, the three workflows leaking the most money, and an honest take on whether we can help.</p>
+      <button class="btn btn-primary" id="start">Start the assessment</button>
+      <p class="reassure">About three minutes. No email required to see your number.</p>
+    </div>
+  `;
+  app.appendChild(el);
+  document.getElementById('start').onclick = () => { state.step = 0; render(); };
+}
+
+function renderQuestion() {
+  const q = QUESTIONS[state.step];
+  const pct = (state.step / QUESTIONS.length) * 100;
+
+  // Resolve dynamic fields against the current answers
+  const title   = (typeof q.getTitle   === 'function') ? q.getTitle(state.answers)   : q.title;
+  const helper  = (typeof q.getHelper  === 'function') ? q.getHelper(state.answers)  : q.helper;
+  const options = (typeof q.getOptions === 'function') ? q.getOptions(state.answers) : q.options;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'fade-in';
+  wrap.innerHTML = `
+    <div class="brand"><a href="index.html">← Locke Operations</a> · Value Leakage Assessment</div>
+    <div class="progress-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
+    <div class="card">
+      <div class="step-meta">Question ${state.step + 1} of ${QUESTIONS.length}</div>
+      <h2>${title}</h2>
+      <p class="helper">${helper || ''}</p>
+      <div id="input-area"></div>
+      <div class="nav">
+        ${state.step > 0 ? '<button class="btn btn-ghost" id="back">Back</button>' : '<span></span>'}
+        <button class="btn btn-primary" id="next" disabled>Next</button>
+      </div>
+    </div>
+  `;
+  app.appendChild(wrap);
+
+  const inputArea = document.getElementById('input-area');
+  const nextBtn = document.getElementById('next');
+  const current = state.answers[q.id];
+
+  if (q.type === 'single') {
+    const optsEl = document.createElement('div');
+    optsEl.className = q.grid ? 'opts-grid' : 'options';
+    options.forEach(o => {
+      const lbl = document.createElement('div');
+      lbl.className = 'opt' + (current === o.v ? ' selected' : '');
+      lbl.textContent = o.label;
+      lbl.onclick = () => {
+        // If industry changed, reset any downstream answers that depend on it
+        if (q.id === 'industry' && state.answers.industry !== o.v) {
+          delete state.answers.tasks;
+        }
+        state.answers[q.id] = o.v;
+        document.querySelectorAll('.opt').forEach(x => x.classList.remove('selected'));
+        lbl.classList.add('selected');
+        setTimeout(goNext, 200);
+      };
+      optsEl.appendChild(lbl);
+    });
+    inputArea.appendChild(optsEl);
+    if (current !== undefined) nextBtn.disabled = false;
+  }
+
+  if (q.type === 'multi') {
+    const selected = current || [];
+    const optsEl = document.createElement('div');
+    optsEl.className = 'options';
+    options.forEach(o => {
+      const lbl = document.createElement('div');
+      lbl.className = 'opt' + (selected.includes(o.v) ? ' selected' : '');
+      lbl.textContent = o.label;
+      lbl.onclick = () => {
+        const cur = state.answers[q.id] ? state.answers[q.id].slice() : [];
+        const idx = cur.indexOf(o.v);
+        if (idx >= 0) cur.splice(idx, 1); else cur.push(o.v);
+        state.answers[q.id] = cur;
+        lbl.classList.toggle('selected');
+        nextBtn.disabled = cur.length === 0;
+      };
+      optsEl.appendChild(lbl);
+    });
+    inputArea.appendChild(optsEl);
+    if (selected.length > 0) nextBtn.disabled = false;
+  }
+
+  if (q.type === 'slider') {
+    const val = current !== undefined ? current : q.default;
+    state.answers[q.id] = val;
+    const sliderEl = document.createElement('div');
+    sliderEl.className = 'slider-wrap';
+    sliderEl.innerHTML = `
+      <div class="slider-value" id="sv">${val}</div>
+      <div class="slider-label">${q.unit}</div>
+      <input type="range" min="${q.min}" max="${q.max}" value="${val}" id="sl">
+    `;
+    inputArea.appendChild(sliderEl);
+    const sl = document.getElementById('sl');
+    const sv = document.getElementById('sv');
+    sl.oninput = () => {
+      sv.textContent = sl.value;
+      state.answers[q.id] = parseInt(sl.value);
+    };
+    nextBtn.disabled = false;
+  }
+
+  nextBtn.onclick = goNext;
+  if (state.step > 0) document.getElementById('back').onclick = () => { state.step--; render(); };
+}
+
+function goNext() {
+  const q = QUESTIONS[state.step];
+  const a = state.answers[q.id];
+  if (a === undefined || (Array.isArray(a) && a.length === 0)) return;
+  state.step++;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  render();
+}
+
+function calculate() {
+  const a = state.answers;
+
+  const volumeBonus = a.leads <= 5 ? 3 : a.leads <= 25 ? 8 : a.leads <= 100 ? 12 : 15;
+  const readiness = (a.maturity || 0) + (a.consistency || 0) + volumeBonus;
+
+  const capture = readiness >= 70 ? 0.55 : readiness >= 40 ? 0.40 : 0.25;
+
+  const timeSavings = (a.hours || 0) * 52 * (a.rate || 0) * capture;
+
+  const responseLift = a.response === 'fast' ? 0
+    : a.response === 'hour' ? 0.005
+    : a.response === 'day' ? 0.015
+    : a.response === 'slow' ? 0.025 : 0;
+  const leadValue = (a.leads || 0) * 12 * (a.value || 0) * responseLift;
+
+  const errorReduction = (a.team || 1) * 1500;
+
+  const total = Math.round(timeSavings + leadValue + errorReduction);
+  const low = Math.round(total * 0.7);
+  const high = Math.round(total * 1.3);
+
+  let band, bandLabel, bandColor;
+  if (readiness >= 70) {
+    band = 'high';
+    bandLabel = 'Ready to automate';
+    bandColor = '#059669';
+  } else if (readiness >= 40) {
+    band = 'mid';
+    bandLabel = 'High opportunity, light foundation work first';
+    bandColor = '#f59e0b';
+  } else {
+    band = 'low';
+    bandLabel = 'Big upside, processes need standardizing first';
+    bandColor = '#ef4444';
+  }
+
+  const tasks = a.tasks || [];
+  const wins = tasks.map(t => {
+    const meta = getTaskMeta(t);
+    if (!meta) return null;
+    const totalHours = a.hours || 0;
+    const totalSegHours = tasks.reduce((sum, tt) => sum + (getTaskMeta(tt)?.hours || 0), 0);
+    const taskHours = totalHours > 0 && totalSegHours > 0
+      ? Math.min(meta.hours, totalHours * (meta.hours / totalSegHours))
+      : meta.hours;
+    const yearlyValue = Math.round(taskHours * 52 * (a.rate || 0) * capture);
+    let diff = meta.diff;
+    if (readiness < 40) diff++;
+    if (readiness >= 70 && diff > 1) diff--;
+    return { name: meta.name, hours: meta.hours, value: yearlyValue, diff };
+  }).filter(Boolean).sort((x, y) => y.value - x.value).slice(0, 3);
+
+  return {
+    total, low, high,
+    timeSavings: Math.round(timeSavings),
+    leadValue: Math.round(leadValue),
+    errorReduction: Math.round(errorReduction),
+    readiness, band, bandLabel, bandColor,
+    wins, capture
+  };
+}
+
+function fmt(n) {
+  return '$' + Math.round(n).toLocaleString('en-US');
+}
+
+function diffBadge(d) {
+  if (d <= 1) return '<span class="diff diff-easy">Easy</span>';
+  if (d === 2) return '<span class="diff diff-med">Medium</span>';
+  return '<span class="diff diff-hard">Heavy lift</span>';
+}
+
+function renderResults() {
+  const r = calculate();
+  const a = state.answers;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'fade-in';
+
+  let html = `
+    <div class="brand"><a href="index.html">← Locke Operations</a> · Your results</div>
+    <div class="hero-money">
+      <div class="label">You could be saving roughly</div>
+      <div class="amount">${fmt(r.low)} to ${fmt(r.high)}</div>
+      <div class="subtitle">per year, based on ${a.hours} hrs/week of repetitive work at $${a.rate}/hr loaded cost.</div>
+    </div>
+
+    <div class="twocol">
+      <div class="panel">
+        <h3>Where the money is</h3>
+        <div class="breakdown-row"><span>Time savings</span><span>${fmt(r.timeSavings)}</span></div>
+        <div class="breakdown-row"><span>Faster lead response</span><span>${fmt(r.leadValue)}</span></div>
+        <div class="breakdown-row"><span>Fewer errors and rework</span><span>${fmt(r.errorReduction)}</span></div>
+        <div class="breakdown-row"><span>Annual midpoint</span><span>${fmt(r.total)}</span></div>
+      </div>
+      <div class="panel">
+        <h3>Automation Readiness</h3>
+        <div class="gauge">
+          <div><span class="gauge-num" style="color:${r.bandColor}">${r.readiness}</span><span class="gauge-max">/100</span></div>
+          <div class="gauge-label" style="color:${r.bandColor}">${r.bandLabel}</div>
+          <div class="gauge-bar"><div class="gauge-fill" style="width:${r.readiness}%; background:${r.bandColor}"></div></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  if (r.band !== 'high') {
+    const gaps = [];
+    if ((a.maturity || 0) < 35) gaps.push('your work mostly lives outside connected software');
+    if ((a.consistency || 0) < 22) gaps.push('your processes vary too much from job to job');
+    if (gaps.length === 0) gaps.push('volume is still building, so payback takes a bit longer');
+    html += `
+      <div class="holdback">
+        <h4>What's holding you back</h4>
+        <p>Right now ${gaps.join(' and ')}. Fix that and the capture rate on these savings roughly doubles. Foundation work is usually faster than people think (2 to 6 weeks).</p>
+      </div>
+    `;
+  }
+
+  if (r.wins.length > 0) {
+    const winsHtml = r.wins.map(w => `
+      <div class="win-card">
+        <div>
+          <div class="win-title">${w.name}${diffBadge(w.diff)}</div>
+          <div class="win-meta">About ${w.hours} hrs/week saved</div>
+        </div>
+        <div class="win-value">${fmt(w.value)}/yr</div>
+      </div>
+    `).join('');
+
+    if (state.emailUnlocked) {
+      html += `
+        <div class="panel" style="margin-top:24px">
+          <h3>Your top ${r.wins.length} automation wins</h3>
+          <div class="wins">${winsHtml}</div>
+        </div>
+      `;
+    } else {
+      html += `
+        <div class="gate-wrap">
+          <div class="panel gated">
+            <h3>Your top ${r.wins.length} automation wins</h3>
+            <div class="wins">${winsHtml}</div>
+          </div>
+          <div class="gate-overlay">
+            <div class="gate-box">
+              <strong>See the ${r.wins.length} automations we'd start with</strong>
+              <div style="font-size:13px; color:var(--ink-2); margin-top:6px">Plus the difficulty and dollar value of each. We'll email the full report.</div>
+              <input type="email" id="email" placeholder="you@yourcompany.com">
+              <button class="btn btn-primary btn-block" id="unlock">Email me the report</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  html += `
+    <div class="cta-section">
+      <h3>Want a human to validate this number?</h3>
+      <p>Thirty-minute fit call. We'll walk your stack, confirm what's achievable, and tell you honestly whether the Audit is worth it.</p>
+      <div class="cta-row">
+        <button class="btn btn-light" id="book">Book a fit call</button>
+        <button class="btn btn-outline" id="restart">Start over</button>
+      </div>
+    </div>
+    <div class="footnote">Range reflects a 30% confidence band around the modeled midpoint.</div>
+  `;
+
+  wrap.innerHTML = html;
+  app.appendChild(wrap);
+
+  if (!state.emailUnlocked) {
+    const unlockBtn = document.getElementById('unlock');
+    if (unlockBtn) {
+      unlockBtn.onclick = () => {
+        const eInput = document.getElementById('email');
+        const e = eInput.value.trim();
+        if (!e || !e.includes('@') || !e.includes('.')) {
+          eInput.style.borderColor = 'var(--danger)';
+          eInput.focus();
+          return;
+        }
+        state.emailUnlocked = true;
+        render();
+      };
+    }
+  }
+  document.getElementById('book').onclick = () => {
+    alert('In production this opens your booking link (Calendly, SavvyCal, etc).');
+  };
+  document.getElementById('restart').onclick = () => {
+    state.step = -1;
+    state.answers = {};
+    state.emailUnlocked = false;
+    window.scrollTo(0, 0);
+    render();
+  };
+}
+
+render();
+</script>
+</body>
+</html>

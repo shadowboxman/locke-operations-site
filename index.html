@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Locke Operations — We automate the admin work your team is stuck doing by hand</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #1A2332;
+    --bone: #F4F1EA;
+    --concrete: #A8A6A0;
+    --oxide: #F25A1A;
+    --hairline: rgba(26, 35, 50, 0.10);
+    --hairline-strong: rgba(26, 35, 50, 0.22);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bone);
+    color: var(--navy);
+    font-family: "IBM Plex Sans", -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .container {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 40px;
+  }
+  /* NAV */
+  .nav {
+    border-bottom: 1px solid var(--hairline);
+    padding: 22px 0;
+  }
+  .nav-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .wordmark {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 18px;
+    letter-spacing: 0.06em;
+    color: var(--navy);
+    text-decoration: none;
+  }
+  .wordmark .dot { color: var(--oxide); }
+  .nav-links {
+    display: flex;
+    gap: 36px;
+    align-items: center;
+  }
+  .nav-links a {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--navy);
+    text-decoration: none;
+    padding: 6px 0;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s ease;
+  }
+  .nav-links a:hover { border-bottom-color: var(--navy); }
+  .nav-cta {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--bone);
+    background: var(--navy);
+    padding: 10px 16px;
+    text-decoration: none;
+    transition: background 0.15s ease;
+  }
+  .nav-cta:hover { background: var(--oxide); }
+  .nav-right {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+  .nav-secondary {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--navy);
+    text-decoration: none;
+    padding: 10px 0;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s ease;
+  }
+  .nav-secondary:hover { border-bottom-color: var(--navy); }
+
+  /* HERO */
+  .hero {
+    padding: 120px 0 100px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .hero-eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+    margin-bottom: 24px;
+  }
+  .hero-eyebrow .mark {
+    color: var(--oxide);
+    margin-right: 8px;
+  }
+  .hero h1 {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 64px;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    max-width: 880px;
+    margin-bottom: 28px;
+    color: var(--navy);
+  }
+  .hero-lead {
+    font-size: 20px;
+    line-height: 1.5;
+    max-width: 680px;
+    margin-bottom: 40px;
+    color: var(--navy);
+  }
+  .hero-cta-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .btn-primary {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--bone);
+    background: var(--oxide);
+    padding: 16px 24px;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    display: inline-block;
+  }
+  .btn-primary:hover { background: var(--navy); }
+  .btn-secondary {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--navy);
+    background: transparent;
+    padding: 16px 24px;
+    text-decoration: none;
+    border: 1px solid var(--navy);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-block;
+  }
+  .btn-secondary:hover { background: var(--navy); color: var(--bone); }
+
+  /* SECTION TEMPLATE */
+  section {
+    padding: 100px 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .section-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--hairline);
+    max-width: 320px;
+  }
+  h2 {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 44px;
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    max-width: 820px;
+    margin-bottom: 24px;
+    color: var(--navy);
+  }
+  .section-lead {
+    font-size: 18px;
+    line-height: 1.55;
+    max-width: 680px;
+    margin-bottom: 56px;
+    color: var(--navy);
+  }
+
+  /* WORK */
+  .work-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border-top: 1px solid var(--navy);
+    border-left: 1px solid var(--navy);
+  }
+  .work-cell {
+    padding: 32px;
+    border-right: 1px solid var(--navy);
+    border-bottom: 1px solid var(--navy);
+  }
+  .work-cell-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--oxide);
+    margin-bottom: 12px;
+  }
+  .work-cell h3 {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 22px;
+    line-height: 1.2;
+    margin-bottom: 12px;
+    color: var(--navy);
+  }
+  .work-cell p {
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--navy);
+  }
+  .work-note {
+    margin-top: 36px;
+    padding-top: 24px;
+    border-top: 1px solid var(--hairline);
+    font-size: 15px;
+    color: var(--navy);
+    line-height: 1.55;
+    max-width: 760px;
+  }
+  .work-note .accent {
+    color: var(--oxide);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  /* WHO */
+  .who-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 24px;
+    margin-top: 12px;
+  }
+  .who-card {
+    padding: 24px 0;
+    border-top: 1px solid var(--navy);
+  }
+  .who-card-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--oxide);
+    margin-bottom: 10px;
+  }
+  .who-card h4 {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+  .who-card p {
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--navy);
+  }
+  .who-note {
+    margin-top: 40px;
+    padding-top: 24px;
+    border-top: 1px solid var(--hairline);
+    font-size: 14px;
+    color: var(--concrete);
+    max-width: 640px;
+  }
+
+  /* PRODUCTS */
+  .products {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+    border-top: 1px solid var(--navy);
+    border-bottom: 1px solid var(--navy);
+  }
+  .product {
+    padding: 32px 28px;
+    border-right: 1px solid var(--hairline-strong);
+  }
+  .product:last-child { border-right: none; }
+  .product-num {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+    margin-bottom: 10px;
+  }
+  .product-name {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 36px;
+    line-height: 1.05;
+    margin-bottom: 4px;
+    color: var(--navy);
+    letter-spacing: -0.01em;
+  }
+  .product-price {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--oxide);
+    margin-bottom: 16px;
+  }
+  .product-desc {
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--navy);
+    margin-bottom: 16px;
+  }
+  .product-includes {
+    list-style: none;
+    padding: 0;
+    border-top: 1px solid var(--hairline);
+    padding-top: 16px;
+    margin-top: 16px;
+  }
+  .product-includes li {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--navy);
+    padding: 4px 0;
+    padding-left: 16px;
+    position: relative;
+  }
+  .product-includes li::before {
+    content: "·";
+    color: var(--oxide);
+    font-weight: 700;
+    position: absolute;
+    left: 0;
+    font-size: 16px;
+    top: 2px;
+  }
+
+  /* HOW */
+  .how-row {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    gap: 24px;
+    padding: 28px 0;
+    border-bottom: 1px solid var(--hairline);
+    align-items: start;
+  }
+  .how-row:last-of-type { border-bottom: none; }
+  .how-step {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--oxide);
+    padding-top: 4px;
+  }
+  .how-body h4 {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 20px;
+    margin-bottom: 6px;
+    color: var(--navy);
+  }
+  .how-body p {
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--navy);
+    max-width: 720px;
+  }
+
+  /* ASSESSMENT CTA */
+  .assess {
+    background: var(--navy);
+    color: var(--bone);
+    padding: 100px 0;
+    border-bottom: none;
+  }
+  .assess .container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+    align-items: center;
+  }
+  .assess-left .section-label {
+    color: var(--concrete);
+    border-bottom-color: rgba(255,255,255,0.15);
+  }
+  .assess-left h2 {
+    color: var(--bone);
+    font-size: 40px;
+    margin-bottom: 20px;
+  }
+  .assess-left p {
+    color: var(--bone);
+    font-size: 17px;
+    opacity: 0.9;
+    margin-bottom: 32px;
+    max-width: 480px;
+  }
+  .assess-btn {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--bone);
+    background: var(--oxide);
+    padding: 18px 26px;
+    text-decoration: none;
+    display: inline-block;
+    transition: background 0.15s ease;
+  }
+  .assess-btn:hover { background: var(--bone); color: var(--navy); }
+
+  .assess-right {
+    border-left: 1px solid rgba(255,255,255,0.15);
+    padding-left: 60px;
+  }
+  .assess-stat {
+    margin-bottom: 32px;
+  }
+  .assess-stat:last-child { margin-bottom: 0; }
+  .assess-stat-num {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 48px;
+    line-height: 1;
+    color: var(--bone);
+    letter-spacing: -0.02em;
+    margin-bottom: 6px;
+  }
+  .assess-stat-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--concrete);
+  }
+
+  /* ANTI-POSITIONING */
+  .anti-section {
+    background: var(--bone);
+  }
+  .anti-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border-top: 1px solid var(--navy);
+    border-left: 1px solid var(--navy);
+    margin-bottom: 40px;
+  }
+  .anti-cell {
+    padding: 28px 24px;
+    border-right: 1px solid var(--navy);
+    border-bottom: 1px solid var(--navy);
+  }
+  .anti-cell .strike {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--oxide);
+    margin-bottom: 10px;
+  }
+  .anti-cell h4 {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 20px;
+    margin-bottom: 6px;
+    color: var(--navy);
+  }
+  .anti-cell p {
+    font-size: 14px;
+    color: var(--navy);
+    line-height: 1.55;
+  }
+  .anti-final {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 24px;
+    color: var(--navy);
+    padding: 16px 0;
+    border-top: 1px solid var(--navy);
+    border-bottom: 1px solid var(--navy);
+  }
+  .anti-final .arrow {
+    color: var(--oxide);
+    margin-right: 12px;
+  }
+
+  /* FOOTER */
+  footer {
+    padding: 60px 0 40px;
+    border-top: 1px solid var(--navy);
+    background: var(--bone);
+  }
+  .footer-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 40px;
+    margin-bottom: 40px;
+  }
+  .footer-brand .wordmark {
+    font-size: 20px;
+    margin-bottom: 12px;
+    display: inline-block;
+  }
+  .footer-brand p {
+    font-size: 13px;
+    color: var(--navy);
+    line-height: 1.55;
+    max-width: 320px;
+  }
+  .footer-col h5 {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+    margin-bottom: 14px;
+  }
+  .footer-col ul { list-style: none; }
+  .footer-col li {
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+  .footer-col a {
+    color: var(--navy);
+    text-decoration: none;
+  }
+  .footer-col a:hover { color: var(--oxide); }
+  .footer-bottom {
+    border-top: 1px solid var(--hairline);
+    padding-top: 20px;
+    display: flex;
+    justify-content: space-between;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--concrete);
+  }
+
+  /* STAT CALLOUT INSIDE WORK CELLS */
+  .work-stat {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--hairline);
+  }
+  .work-stat-num {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 22px;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    color: var(--oxide);
+    margin-bottom: 6px;
+  }
+  .work-stat-text {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--navy);
+    margin-bottom: 6px;
+  }
+  .work-stat-cite {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--concrete);
+  }
+
+  /* COLLAPSIBLE CITATION */
+  .cite-toggle {
+    margin-top: 6px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+  .cite-toggle summary {
+    cursor: pointer;
+    color: var(--concrete);
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-bottom: 1px solid transparent;
+    padding-bottom: 1px;
+    user-select: none;
+  }
+  .cite-toggle summary::-webkit-details-marker { display: none; }
+  .cite-toggle summary::marker { content: ''; }
+  .cite-toggle summary:hover { border-bottom-color: var(--concrete); color: var(--navy); }
+  .cite-toggle summary::after {
+    content: '+';
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    line-height: 1;
+    color: var(--concrete);
+    transition: transform 0.15s ease;
+    display: inline-block;
+  }
+  .cite-toggle[open] summary::after { content: '−'; color: var(--navy); }
+  .cite-toggle[open] summary { color: var(--navy); }
+  .cite-content {
+    margin-top: 8px;
+    color: var(--navy);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    line-height: 1.5;
+  }
+  /* Dark-band variant */
+  .numbers .cite-toggle summary { color: var(--concrete); }
+  .numbers .cite-toggle summary:hover { border-bottom-color: var(--bone); color: var(--bone); }
+  .numbers .cite-toggle summary::after { color: var(--concrete); }
+  .numbers .cite-toggle[open] summary { color: var(--bone); }
+  .numbers .cite-toggle[open] summary::after { color: var(--bone); }
+  .numbers .cite-content { color: var(--bone); }
+
+  /* NUMBERS BAND (dark) */
+  .numbers {
+    background: var(--navy);
+    color: var(--bone);
+    padding: 100px 0;
+    border-bottom: 1px solid var(--navy);
+  }
+  .numbers .section-label {
+    color: var(--concrete);
+    border-bottom-color: rgba(244, 241, 234, 0.2);
+  }
+  .numbers h2 {
+    color: var(--bone);
+  }
+  .numbers .section-lead {
+    color: var(--bone);
+    opacity: 0.85;
+  }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    border-top: 1px solid rgba(244, 241, 234, 0.25);
+    border-left: 1px solid rgba(244, 241, 234, 0.25);
+    margin-top: 16px;
+  }
+  .stat-cell {
+    padding: 32px 24px;
+    border-right: 1px solid rgba(244, 241, 234, 0.25);
+    border-bottom: 1px solid rgba(244, 241, 234, 0.25);
+  }
+  .stat-num {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 44px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--oxide);
+    margin-bottom: 14px;
+  }
+  .stat-label {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--bone);
+    margin-bottom: 16px;
+    min-height: 64px;
+  }
+  .stat-cite {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--concrete);
+  }
+  .numbers-footnote {
+    margin-top: 32px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--concrete);
+    border-top: 1px solid rgba(244, 241, 234, 0.15);
+    padding-top: 16px;
+  }
+
+  /* OVERSIZED SECTION NUMERALS */
+  section { position: relative; overflow: hidden; isolation: isolate; }
+  .section-numeral {
+    position: absolute;
+    top: 32px;
+    right: -36px;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 300;
+    font-size: 280px;
+    line-height: 0.85;
+    letter-spacing: -0.04em;
+    color: var(--hairline);
+    pointer-events: none;
+    user-select: none;
+    z-index: -1;
+  }
+  .numbers .section-numeral,
+  .assess .section-numeral {
+    color: rgba(244, 241, 234, 0.06);
+  }
+
+  /* HATCHED OXIDE DIVIDER */
+  .hatch-band {
+    height: 32px;
+    background: repeating-linear-gradient(
+      45deg,
+      var(--bone) 0,
+      var(--bone) 8px,
+      var(--oxide) 8px,
+      var(--oxide) 10px
+    );
+    border-top: 1px solid var(--navy);
+    border-bottom: 1px solid var(--navy);
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 900px) {
+    .container { padding: 0 24px; }
+    .hero { padding: 80px 0; }
+    .hero h1 { font-size: 42px; }
+    .hero-lead { font-size: 17px; }
+    section { padding: 64px 0; }
+    h2 { font-size: 32px; }
+    .work-grid, .who-grid, .products, .anti-grid, .stat-grid { grid-template-columns: 1fr; }
+    .assess .container { grid-template-columns: 1fr; gap: 40px; }
+    .assess-right { border-left: none; padding-left: 0; border-top: 1px solid rgba(255,255,255,0.15); padding-top: 32px; }
+    .footer-row { grid-template-columns: 1fr 1fr; }
+    .nav-links { display: none; }
+    .section-numeral { font-size: 160px; top: 24px; right: -20px; }
+    .hatch-band { height: 24px; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <div class="container nav-row">
+      <a class="wordmark" href="#">LOCKE <span class="dot">O</span>PERATIONS</a>
+      <div class="nav-links">
+        <a href="#work">The work</a>
+        <a href="#products">Products</a>
+        <a href="#how">How it runs</a>
+        <a href="#assess">Assessment</a>
+      </div>
+      <div class="nav-right">
+        <a class="nav-secondary" href="login.html">Client login</a>
+        <a class="nav-cta" href="assessment.html">Take the assessment</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="container">
+      <div class="hero-eyebrow"><span class="mark">●</span>Done for you · Fixed price · Guaranteed in writing</div>
+      <h1>We handle the work your software won't.</h1>
+      <p class="hero-lead">
+        Your team spends hours every week on admin work. Filling out forms. Chasing approvals over email. Typing data from one system into another. Locke Operations automates that work and runs it for you. You keep the systems you already have. We build the piece that's missing.
+      </p>
+      <div class="hero-cta-row">
+        <a href="assessment.html" class="btn-primary">Take the 10-minute assessment</a>
+        <a href="#work" class="btn-secondary">See what we build</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- WORK -->
+  <section id="work">
+    <div class="section-numeral">01</div>
+    <div class="container">
+      <div class="section-label">01 — The Work</div>
+      <h2>The manual work between your systems.</h2>
+      <p class="section-lead">
+        Your software handles the obvious stuff. We handle everything around it. The forms your team fills out. The emails they send to chase approvals. The numbers they retype between systems that don't talk to each other. The kind of work no one ever built a tool for, so a person does it every week.
+      </p>
+
+      <div class="work-grid">
+        <div class="work-cell">
+          <div class="work-cell-label">Construction · Trades</div>
+          <h3>Lien waivers and payment paperwork</h3>
+          <p>Track waivers due from your subs. Generate the right form for each project. Route it for signature. File it with the payment. Match invoices against purchase orders. Stop chasing it over email.</p>
+          <div class="work-stat">
+            <div class="work-stat-num">6 hrs/week</div>
+            <div class="work-stat-text">If you have eight techs, that's a full week of labor every week, going to admin. Two full-time positions of margin you're paying for and not getting work back from.</div>
+            <details class="cite-toggle">
+              <summary>source</summary>
+              <div class="cite-content">Salesforce Field Service Trends Report, 2024.</div>
+            </details>
+          </div>
+        </div>
+        <div class="work-cell">
+          <div class="work-cell-label">Restoration</div>
+          <h3>Claim coordination from loss to close</h3>
+          <p>Manage the flow between homeowner, adjuster, mortgage holder, and your crew. Photos, supplements, scope changes, sign-offs. The pieces that today live in someone's inbox and slip a few days at every step.</p>
+          <div class="work-stat">
+            <div class="work-stat-num">16.5%</div>
+            <div class="work-stat-text">Of your annual revenue is sitting in accounts receivable on any given day. Most of it stuck behind supplements, photos, and approvals nobody's written yet.</div>
+            <details class="cite-toggle">
+              <summary>source</summary>
+              <div class="cite-content">Restoration Industry Association &amp; Cleanfax 2025 Restoration Benchmarking Survey.</div>
+            </details>
+          </div>
+        </div>
+        <div class="work-cell">
+          <div class="work-cell-label">Hospitality</div>
+          <h3>Booking-platform reconciliation and vendor billing</h3>
+          <p>Reconcile commissions across booking platforms. Match vendor invoices against food and beverage costs. Pull tax remittance across jurisdictions into one workflow. Less time guessing whether the numbers add up.</p>
+          <div class="work-stat">
+            <div class="work-stat-num">12-15 hrs/week</div>
+            <div class="work-stat-text">Your manager is spending two days a week building schedules. The other three days are spent doing the actual job you hired them for.</div>
+            <details class="cite-toggle">
+              <summary>source</summary>
+              <div class="cite-content">MyShyft. Administrative ROI Calculator for AI Employee Scheduling.</div>
+            </details>
+          </div>
+        </div>
+        <div class="work-cell">
+          <div class="work-cell-label">Architecture · Engineering</div>
+          <h3>Project admin and change orders</h3>
+          <p>Track project profitability across phases. Manage field questions and submittals. Reconcile timesheets to project codes. The work that drains your project managers and never quite gets caught up.</p>
+          <div class="work-stat">
+            <div class="work-stat-num">11% / yr</div>
+            <div class="work-stat-text">Firms that fix the back office grow 11% faster than the ones that don't. If you're not in that group, your competitors are.</div>
+            <details class="cite-toggle">
+              <summary>source</summary>
+              <div class="cite-content">Deltek 45th Clarity A&amp;E Industry Study.</div>
+            </details>
+          </div>
+        </div>
+      </div>
+
+      <p class="work-note">
+        <span class="accent">Also in scope</span>
+        The customer-side work that runs on the same mechanics. Review chase. Estimate follow-up. Lead intake. Post-job touch sequences. Different surface, same wedge. We automate the operational parts of marketing — never the strategy.
+      </p>
+    </div>
+  </section>
+
+  <!-- WHO -->
+  <section id="who">
+    <div class="section-numeral">02</div>
+    <div class="container">
+      <div class="section-label">02 — Who it's for</div>
+      <h2>Independent service businesses.</h2>
+      <p class="section-lead">
+        We work with one kind of company across many industries. Independent service businesses where your team spends too much time on admin and not enough time on the actual work. Same problem in different clothes.
+      </p>
+
+      <div class="who-grid">
+        <div class="who-card">
+          <div class="who-card-label">Specialty Trades</div>
+          <h4>HVAC, electrical, plumbing, mechanical, general contractors</h4>
+          <p>Specialty contractors with commercial or institutional work. Heavy general-contractor interface, pay-application forms, prevailing wage.</p>
+        </div>
+        <div class="who-card">
+          <div class="who-card-label">Restoration</div>
+          <h4>Water, fire, mold, mitigation</h4>
+          <p>Independent restoration firms juggling homeowners, adjusters, and mortgage holders on every job.</p>
+        </div>
+        <div class="who-card">
+          <div class="who-card-label">A&amp;E Firms</div>
+          <h4>Architects, engineers, consultants</h4>
+          <p>Mid-size firms drowning in project admin, change orders, and timesheets across multiple jobs.</p>
+        </div>
+        <div class="who-card">
+          <div class="who-card-label">Hospitality</div>
+          <h4>Hotels, restaurants, event venues, catering</h4>
+          <p>Independent operators wrestling booking-platform reconciliation, multi-jurisdiction tax remittance, event-order management, and tip-pool math.</p>
+        </div>
+        <div class="who-card">
+          <div class="who-card-label">Other</div>
+          <h4>If your back office runs the show</h4>
+          <p>If your team spends more time on admin than serving customers, the model probably works for you too. Start with the assessment.</p>
+        </div>
+      </div>
+
+      <p class="who-note">
+        We work across many industries to start. The assessment tells us where we can save you the most money in your specific business. From there we pick one task, automate it, and run it for you.
+      </p>
+    </div>
+  </section>
+
+  <!-- WHY WE EXIST -->
+  <section id="why">
+    <div class="section-numeral">03</div>
+    <div class="container">
+      <div class="section-label">03 — Why we exist</div>
+      <h2>Stay independent. Or sell on your terms.</h2>
+      <p class="section-lead">
+        Most independent operators in your size band eventually sell, usually to a private-equity-backed platform, and usually for less than they hoped. The reasons are predictable. Margins got thin. The business couldn't run a week without the owner. Both are admin problems in disguise.
+      </p>
+      <p class="section-lead" style="margin-top: -32px;">
+        If you want to stay independent for the long haul, we give you back the margin and the time to do it. If you decide to sell, we make the business worth more on the day a buyer asks for your books. Same work. Two outcomes. You pick.
+      </p>
+    </div>
+  </section>
+
+  <div class="hatch-band" aria-hidden="true"></div>
+
+  <!-- PRODUCTS -->
+  <section id="products">
+    <div class="section-numeral">04</div>
+    <div class="container">
+      <div class="section-label">04 — Products</div>
+      <h2>Three packages. Fixed price. Written guarantee.</h2>
+      <p class="section-lead">
+        We don't bill by the hour. We don't sell software. We don't write slide decks. Each package has a clear scope, a fixed price, and a result you can hold us to.
+      </p>
+
+      <div class="products">
+        <div class="product">
+          <div class="product-num">01</div>
+          <div class="product-name">Audit</div>
+          <div class="product-price">Half-day onsite · 5-day deliverable</div>
+          <p class="product-desc">A half-day onsite. A written report. We find where your team is losing time and tell you what it would cost to fix it.</p>
+          <ul class="product-includes">
+            <li>Walk-through of your day with the team doing the work</li>
+            <li>Measured hours per month on your top five admin tasks</li>
+            <li>A dollar estimate of what it's costing you</li>
+            <li>Three things we'd build first, with a price for each</li>
+            <li>Credit toward a Build if you go ahead</li>
+          </ul>
+        </div>
+
+        <div class="product">
+          <div class="product-num">02</div>
+          <div class="product-name">Build</div>
+          <div class="product-price">4-8 weeks · fixed scope</div>
+          <p class="product-desc">We pick one task that's eating your team's time and we automate it end-to-end.</p>
+          <ul class="product-includes">
+            <li>Connections to the systems you already use</li>
+            <li>Rules for the tricky cases your team handles today</li>
+            <li>Plain-language documentation and handoff</li>
+            <li>Two weeks of side-by-side support after launch</li>
+            <li>30/40/30 payment terms</li>
+          </ul>
+        </div>
+
+        <div class="product">
+          <div class="product-num">03</div>
+          <div class="product-name">Run</div>
+          <div class="product-price">Monthly · 6-month minimum</div>
+          <p class="product-desc">We run it for you every day. Your team owns the result. We make sure it gets done.</p>
+          <ul class="product-includes">
+            <li>Written guarantee on speed and accuracy</li>
+            <li>Monthly review of anything that didn't go to plan</li>
+            <li>Quarterly tune-up as your business changes</li>
+            <li>A named person on our team you can call</li>
+            <li>30-day cancellation after the six-month minimum</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW -->
+  <section id="how">
+    <div class="section-numeral">05</div>
+    <div class="container">
+      <div class="section-label">05 — How it runs</div>
+      <h2>From first call to operating workflow in under sixty days.</h2>
+
+      <div class="how-row">
+        <div class="how-step">Day 1</div>
+        <div class="how-body">
+          <h4>Thirty-minute fit call</h4>
+          <p>We listen. You tell us one task that's costing your team time. If it's something we know how to fix, we book the Audit. If it isn't, we tell you and point you somewhere better. No pressure. No slides.</p>
+        </div>
+      </div>
+      <div class="how-row">
+        <div class="how-step">Days 2-7</div>
+        <div class="how-body">
+          <h4>Audit, onsite</h4>
+          <p>Half a day with your team. We sit with the people doing the work. Count the hours. Trace how the paperwork moves. You get a written report by day five with three things we'd build and what they'd cost.</p>
+        </div>
+      </div>
+      <div class="how-row">
+        <div class="how-step">Weeks 2-9</div>
+        <div class="how-body">
+          <h4>Build, in flight</h4>
+          <p>We connect to the systems you already use. We write the rules for the easy cases and the tricky ones. We test it against your actual work. You see what we're doing every week. No surprises at the end.</p>
+        </div>
+      </div>
+      <div class="how-row">
+        <div class="how-step">Week 10+</div>
+        <div class="how-body">
+          <h4>Run, with a written guarantee</h4>
+          <p>The automation is live. We watch it. Your team owns the work that goes in and out. We own the result. Monthly review. Quarterly tune-up. One named person on our team you can call when something looks off.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BY THE NUMBERS -->
+  <section class="numbers" id="numbers">
+    <div class="section-numeral">06</div>
+    <div class="container">
+      <div class="section-label">06 — By the numbers</div>
+      <h2>The work you don't have time for. The cost you already feel.</h2>
+      <p class="section-lead">
+        You don't lose money on the work itself. You lose it on the work around the work. Here's the math, from the industries you operate in.
+      </p>
+
+      <div class="stat-grid">
+        <div class="stat-cell">
+          <div class="stat-num">96 min</div>
+          <div class="stat-label">Your day is missing 96 minutes you never get back. Three full work weeks a year.</div>
+          <details class="cite-toggle">
+            <summary>source</summary>
+            <div class="cite-content">Salesforce / Slack Survey, 2023. Small Business Owners Lose 1.5 Hours Daily to Wasted Time.</div>
+          </details>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-num">$26,000</div>
+          <div class="stat-label">For every person on your team carrying admin work, that's the productivity you're losing each year. Before salary.</div>
+          <details class="cite-toggle">
+            <summary>source</summary>
+            <div class="cite-content">Sage Advice US. 3 productivity drains that plague growing businesses.</div>
+          </details>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-num">1 in 3</div>
+          <div class="stat-label">Contractors charge less than the job actually costs them. Most don't know whether they're one of them.</div>
+          <details class="cite-toggle">
+            <summary>source</summary>
+            <div class="cite-content">Construction Financial Management Association, via PushLeads.</div>
+          </details>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-num">87%</div>
+          <div class="stat-label">If you run an engineering firm with fewer than 20 people, you're not an outlier. You're the median. And you can't afford a full ops team.</div>
+          <details class="cite-toggle">
+            <summary>source</summary>
+            <div class="cite-content">U.S. Census Bureau, via Dan Cumberland Labs.</div>
+          </details>
+        </div>
+      </div>
+
+      <div class="numbers-footnote">
+        Public sources. Your number is specific. Find it in the assessment.
+      </div>
+    </div>
+  </section>
+
+  <div class="hatch-band" aria-hidden="true"></div>
+
+  <!-- ASSESSMENT -->
+  <section class="assess" id="assess">
+    <div class="section-numeral">07</div>
+    <div class="container">
+      <div class="assess-left">
+        <div class="section-label">07 — Assessment</div>
+        <h2>Ten questions. Three minutes. A real dollar number.</h2>
+        <p>Most owners we talk to are losing tens of thousands of dollars a year to admin work and don't realize it. The assessment gives you a real dollar number, names the three tasks where you'd save the most, and tells you honestly whether we can help. No email needed to see your number. No sales call required.</p>
+        <a href="assessment.html" class="assess-btn">Start the assessment →</a>
+      </div>
+
+      <div class="assess-right">
+        <div class="assess-stat">
+          <div class="assess-stat-num">10</div>
+          <div class="assess-stat-label">Questions, ~3 minutes</div>
+        </div>
+        <div class="assess-stat">
+          <div class="assess-stat-num">$XXk</div>
+          <div class="assess-stat-label">Estimated annual savings</div>
+        </div>
+        <div class="assess-stat">
+          <div class="assess-stat-num">3</div>
+          <div class="assess-stat-label">Tasks where you'd save the most</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ANTI-POSITIONING -->
+  <section class="anti-section">
+    <div class="section-numeral">08</div>
+    <div class="container">
+      <div class="section-label">08 — What we are not</div>
+      <h2>If you're shopping for any of these, we're not it.</h2>
+
+      <div class="anti-grid">
+        <div class="anti-cell">
+          <div class="strike">Not</div>
+          <h4>A consulting firm</h4>
+          <p>We don't write slide decks or strategy memos. If the work doesn't actually run when we hand it over, we haven't done our job.</p>
+        </div>
+        <div class="anti-cell">
+          <div class="strike">Not</div>
+          <h4>A software company</h4>
+          <p>We don't sell software. We use what you already have and build the piece that's missing.</p>
+        </div>
+        <div class="anti-cell">
+          <div class="strike">Not</div>
+          <h4>An agency</h4>
+          <p>We don't bill by the hour. We price the result and we stand behind it. If we go over, that's on us.</p>
+        </div>
+        <div class="anti-cell">
+          <div class="strike">Not</div>
+          <h4>An AI company</h4>
+          <p>We don't sell AI. We sell hours back to your team and dollars back to your business.</p>
+        </div>
+      </div>
+
+      <div class="anti-final">
+        <span class="arrow">→</span>We sell results, in writing.
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="container">
+      <div class="footer-row">
+        <div class="footer-brand">
+          <span class="wordmark">LOCKE <span class="dot">O</span>PERATIONS</span>
+          <p>We automate the admin work your team is stuck doing by hand. Audit, build, run.</p>
+        </div>
+        <div class="footer-col">
+          <h5>Work</h5>
+          <ul>
+            <li><a href="#work">The work</a></li>
+            <li><a href="#who">Who it's for</a></li>
+            <li><a href="#products">Products</a></li>
+            <li><a href="#how">How it runs</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h5>Start</h5>
+          <ul>
+            <li><a href="assessment.html">Take the assessment</a></li>
+            <li><a href="#">Book a fit call</a></li>
+            <li><a href="#">Read a case study</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h5>Contact</h5>
+          <ul>
+            <li><a href="mailto:hello@lockeoperations.com">hello@lockeoperations.com</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <div>© 2026 Locke Operations</div>
+        <div>v0.1</div>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
