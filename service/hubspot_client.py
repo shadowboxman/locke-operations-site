@@ -17,8 +17,8 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-HUBSPOT_PORTAL_ID = os.environ["HUBSPOT_PORTAL_ID"]
-HUBSPOT_FORM_ID = os.environ["HUBSPOT_FORM_ID"]
+HUBSPOT_PORTAL_ID = os.environ["HUBSPOT_PORTAL_ID"].strip().strip('"').strip("'")
+HUBSPOT_FORM_ID = os.environ["HUBSPOT_FORM_ID"].strip().strip('"').strip("'")
 HUBSPOT_ENDPOINT = (
     f"https://api.hsforms.com/submissions/v3/integration/submit/"
     f"{HUBSPOT_PORTAL_ID}/{HUBSPOT_FORM_ID}"

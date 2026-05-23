@@ -16,10 +16,40 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-RESEND_API_KEY = os.environ["RESEND_API_KEY"]
-RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "Locke Operations <hello@lockeoperations.com>")
-RESEND_REPLY_TO = os.environ.get("RESEND_REPLY_TO", "hello@lockeoperations.com")
+
+def _clean_env(name: str, default: str | None = None) -> str:
+    """Read an env var and strip the things people commonly paste by accident:
+    whitespace at either end, surrounding double or single quotes, and (defensively)
+    a leading 'Bearer ' prefix on tokens. Cheap defense against secret-store paste bugs.
+    """
+    raw = os.environ.get(name, default)
+    if raw is None:
+        raise KeyError(name)
+    cleaned = raw.strip().strip('"').strip("'").strip()
+    if cleaned.lower().startswith("bearer "):
+        cleaned = cleaned[7:].strip()
+    return cleaned
+
+
+RESEND_API_KEY = _clean_env("RESEND_API_KEY")
+RESEND_FROM_EMAIL = _clean_env("RESEND_FROM_EMAIL", "Locke Operations <hello@lockeoperations.com>")
+RESEND_REPLY_TO = _clean_env("RESEND_REPLY_TO", "hello@lockeoperations.com")
 RESEND_BCC = os.environ.get("RESEND_BCC")  # optional, e.g. for archival
+if RESEND_BCC:
+    RESEND_BCC = RESEND_BCC.strip().strip('"').strip("'")
+
+# Boot-time visibility — masked so we never leak the key, but we can confirm what
+# Railway actually loaded. Compare 'len' and the prefix/suffix against your
+# password manager copy if 401s persist.
+_masked = (
+    f"{RESEND_API_KEY[:4]}...{RESEND_API_KEY[-4:]}"
+    if len(RESEND_API_KEY) >= 8
+    else "<too-short>"
+)
+log.info(
+    "resend.env loaded key_len=%d key_preview=%s from=%r",
+    len(RESEND_API_KEY), _masked, RESEND_FROM_EMAIL,
+)
 
 RESEND_ENDPOINT = "https://api.resend.com/emails"
 
