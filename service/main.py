@@ -21,6 +21,15 @@ from dotenv import load_dotenv
 
 load_dotenv()  # pull .env in local dev; no-op on Railway where env vars are injected
 
+# Configure logging BEFORE any other module imports so import-time log lines
+# (notably the masked Resend key preview in email_client.py) actually surface.
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    stream=sys.stdout,
+)
+log = logging.getLogger("locke.submit")
+
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -28,16 +37,6 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 import hubspot_client
 from email_client import send_assessment_email
 from pdf_generator import calculate, fmt_money, generate_pdf, pdf_filename
-
-# ---------------------------------------------------------------
-# Logging — single-line JSON-ish to stdout; Railway aggregates it.
-# ---------------------------------------------------------------
-logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO"),
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    stream=sys.stdout,
-)
-log = logging.getLogger("locke.submit")
 
 # ---------------------------------------------------------------
 # CORS — allowlist driven by env, comma-separated.
