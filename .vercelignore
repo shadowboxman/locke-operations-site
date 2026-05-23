@@ -1,0 +1,5 @@
+# Vercel hosts only the static site at the repo root.
+# The /service directory (Python FastAPI app) deploys to Railway separately.
+service/
+*.md
+.env*

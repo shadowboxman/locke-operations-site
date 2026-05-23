@@ -12,3 +12,24 @@
 
 # OneDrive sync conflicts
 *conflict*
+
+# Python (service/)
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local env files (NEVER commit these)
+.env
+.env.local
+.env.*.local
+service/.env
+
+# Local lead JSON files used by manual playbook 06
+lead-*.json
+Assessment - * - *.pdf
+

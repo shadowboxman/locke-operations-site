@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Assessment Results — Locke Operations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #1A2332;
+    --bone: #F4F1EA;
+    --concrete: #A8A6A0;
+    --oxide: #F25A1A;
+    --hairline: rgba(26, 35, 50, 0.10);
+  }
+
+  /* PAGE SETUP — running elements for header/footer */
+  @page {
+    size: letter;
+    margin: 1in 0.85in 0.95in 0.85in;
+    background: #F4F1EA;
+    @top-left {
+      content: element(brand-header);
+      width: 100%;
+      vertical-align: bottom;
+      padding-bottom: 8pt;
+      border-bottom: 0.5pt solid rgba(26, 35, 50, 0.15);
+    }
+    @bottom-left {
+      content: element(footer-left);
+      vertical-align: top;
+      padding-top: 8pt;
+      border-top: 0.5pt solid rgba(26, 35, 50, 0.15);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: #A8A6A0;
+    }
+    @bottom-right {
+      content: "PAGE " counter(page) " OF " counter(pages);
+      vertical-align: top;
+      padding-top: 8pt;
+      border-top: 0.5pt solid rgba(26, 35, 50, 0.15);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: #A8A6A0;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #F4F1EA;
+    font-family: "IBM Plex Sans", -apple-system, sans-serif;
+    color: var(--navy);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* RUNNING ELEMENTS */
+  .brand-header {
+    position: running(brand-header);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    width: 100%;
+  }
+  .wm {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 10pt;
+    letter-spacing: 0.06em;
+    color: var(--navy);
+  }
+  .wm .o { color: var(--oxide); }
+  .brand-header .meta {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+  }
+  .footer-left {
+    position: running(footer-left);
+  }
+
+  /* PAGE SECTIONS */
+  .page-content {
+    padding-top: 20px;
+    page-break-after: always;
+  }
+  .page-content:last-child { page-break-after: auto; }
+
+  /* SHARED ELEMENTS */
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--concrete);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .eyebrow::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 14px;
+    background: var(--oxide);
+  }
+  h2.section-title {
+    font-weight: 600;
+    font-size: 22pt;
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    margin-bottom: 18px;
+  }
+  p.body {
+    font-size: 11pt;
+    line-height: 1.55;
+    margin-bottom: 14px;
+  }
+
+  /* PAGE 1 - HERO */
+  .prepared {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--navy);
+    padding: 14px 0;
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: 56px;
+  }
+  .hero-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10pt;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+    margin-bottom: 14px;
+  }
+  .hero-amount {
+    font-weight: 600;
+    font-size: 64pt;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    color: var(--navy);
+    margin-bottom: 24px;
+  }
+  .hero-subtitle {
+    font-size: 14pt;
+    line-height: 1.45;
+    color: var(--navy);
+    max-width: 6in;
+    margin-bottom: 56px;
+  }
+  .hero-framing {
+    font-size: 10.5pt;
+    line-height: 1.6;
+    color: var(--navy);
+    max-width: 5.8in;
+    padding-top: 18px;
+    border-top: 1px solid var(--hairline);
+  }
+
+  /* "What this looks like" comparison block (page 1) */
+  .equivs {
+    margin-bottom: 32px;
+    padding: 18px 22px;
+    background: rgba(242, 90, 26, 0.05);
+    border-left: 4px solid var(--oxide);
+  }
+  .equivs-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+    margin-bottom: 12px;
+  }
+  .equiv {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    padding: 6px 0;
+    font-size: 13pt;
+    line-height: 1.35;
+    color: var(--navy);
+  }
+  .equiv .approx {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    color: var(--oxide);
+    font-size: 16pt;
+    width: 18pt;
+    flex-shrink: 0;
+  }
+
+  /* PAGE 2 - BREAKDOWN (stacked bar) + READINESS */
+  .composition {
+    margin-bottom: 36px;
+  }
+  .midpoint-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--navy);
+    margin-bottom: 18px;
+  }
+  .midpoint-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10pt;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+  }
+  .midpoint-value {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 28pt;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--oxide);
+  }
+  .stacked-bar {
+    display: flex;
+    height: 56px;
+    margin-bottom: 14px;
+    gap: 3px;
+  }
+  .stacked-bar .seg {
+    background: var(--oxide);
+    color: var(--bone);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11pt;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .stacked-bar .seg.s2 { background: #E84F0F; }
+  .stacked-bar .seg.s3 { background: #D44508; }
+  .stacked-legend {
+    display: flex;
+    gap: 3px;
+    padding-top: 4px;
+  }
+  .legend-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .legend-name {
+    font-size: 10pt;
+    color: var(--navy);
+    line-height: 1.35;
+  }
+  .legend-pct {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9pt;
+    color: var(--concrete);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }
+
+  .readiness-box {
+    border-top: 1px solid var(--navy);
+    padding-top: 18px;
+    margin-bottom: 28px;
+  }
+  .readiness-row {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .readiness-num {
+    font-weight: 300;
+    font-size: 60pt;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    color: var(--oxide);
+  }
+  .readiness-of {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 14pt;
+    color: var(--concrete);
+  }
+  .readiness-label {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 500;
+    font-size: 14pt;
+    color: var(--navy);
+    flex: 1;
+    text-align: right;
+  }
+  .readiness-bar {
+    height: 6px;
+    background: var(--hairline);
+    margin-bottom: 18px;
+  }
+  .readiness-bar .fill {
+    height: 100%;
+    background: var(--oxide);
+  }
+
+  .holdback {
+    border-left: 4px solid var(--oxide);
+    padding: 6px 18px;
+    margin-bottom: 28px;
+  }
+  .holdback h3 {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--oxide);
+    margin-bottom: 8px;
+  }
+  .holdback p {
+    font-size: 11pt;
+    line-height: 1.55;
+  }
+
+  .footnote {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--concrete);
+  }
+
+  /* PAGE 3 - WINS + CTA + QR */
+  .wins {
+    border-top: 1px solid var(--navy);
+    margin-bottom: 36px;
+  }
+  .win {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .win:last-child {
+    border-bottom: 1px solid var(--navy);
+  }
+  .win-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 18px;
+  }
+  .win-text { flex: 1; }
+  .win-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .win-title {
+    font-weight: 600;
+    font-size: 13pt;
+    color: var(--navy);
+  }
+  .win-meta {
+    font-size: 10pt;
+    color: var(--concrete);
+  }
+  .win-value {
+    font-weight: 600;
+    font-size: 18pt;
+    color: var(--oxide);
+    letter-spacing: -0.01em;
+    font-family: "IBM Plex Sans", sans-serif;
+    white-space: nowrap;
+  }
+  .win-bar {
+    margin-top: 8px;
+    height: 4px;
+    background: rgba(26, 35, 50, 0.06);
+  }
+  .win-bar .fill {
+    height: 100%;
+    background: var(--oxide);
+  }
+  .win-badge {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 8pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    padding: 3px 9px;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .win-badge.easy { color: #047857; background: rgba(5, 150, 105, 0.12); }
+  .win-badge.med  { color: #92400e; background: rgba(180, 83, 9, 0.12); }
+  .win-badge.hard { color: #991b1b; background: rgba(185, 28, 28, 0.12); }
+
+  .next-step .body { margin-bottom: 18px; }
+  .cta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.3in;
+    gap: 24px;
+    align-items: center;
+    padding: 18px 0;
+    border-top: 1px solid var(--navy);
+    border-bottom: 1px solid var(--navy);
+    margin-bottom: 22px;
+  }
+  .cta-text strong {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 13pt;
+    color: var(--navy);
+    display: block;
+    margin-bottom: 4px;
+  }
+  .cta-text .url {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10pt;
+    color: var(--navy);
+  }
+  .cta-text .scan-hint {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--concrete);
+    margin-top: 10px;
+    display: block;
+  }
+  .qr-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .qr-wrap svg {
+    width: 1.1in;
+    height: 1.1in;
+    display: block;
+  }
+  .qr-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 6.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+  }
+
+  .methodology {
+    padding-top: 14px;
+  }
+  .methodology h3 {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+    margin-bottom: 8px;
+  }
+  .methodology p {
+    font-size: 9pt;
+    line-height: 1.5;
+    color: var(--navy);
+    margin-bottom: 3px;
+  }
+</style>
+</head>
+<body>
+
+<!-- RUNNING HEADER (appears on every page) -->
+<div class="brand-header">
+  <span class="wm">LOCKE <span class="o">O</span>PERATIONS</span>
+  <span class="meta">{{contact_caps}} · {{company_caps}} · {{date}}</span>
+</div>
+
+<!-- RUNNING FOOTER LEFT (appears on every page) -->
+<div class="footer-left">LOCKEOPERATIONS.COM</div>
+
+<!-- ============== PAGE 1 — HERO ============== -->
+<section class="page-content">
+  <div class="prepared">
+    PREPARED FOR &nbsp;·&nbsp; {{contact_caps}}, {{company_caps}}
+  </div>
+
+  <div class="hero-label">YOU COULD BE SAVING ROUGHLY</div>
+  <div class="hero-amount">{{hero_low}} to {{hero_high}}</div>
+  <p class="hero-subtitle">per year, based on {{hours}} hours/week of repetitive work at ${{rate}}/hour loaded cost.</p>
+
+  <div class="equivs">
+    <div class="equivs-label">WHAT {{midpoint}}/YR LOOKS LIKE IN YOUR BUSINESS</div>
+    {{equivalents_html}}
+  </div>
+
+  <p class="hero-framing">
+    This range is the modeled annual value of automating the highest-cost admin work in your business, assuming a 40% capture rate based on your current operational readiness. The range reflects a 30% confidence band around the modeled midpoint.
+  </p>
+</section>
+
+<!-- ============== PAGE 2 — BREAKDOWN + READINESS ============== -->
+<section class="page-content">
+  <div class="eyebrow">WHERE THE MONEY IS</div>
+  <h2 class="section-title">Three places we'd find it.</h2>
+
+  <div class="composition">
+    <div class="midpoint-row">
+      <div class="midpoint-label">ANNUAL MIDPOINT</div>
+      <div class="midpoint-value">{{midpoint}}</div>
+    </div>
+
+    <div class="stacked-bar">
+      <div class="seg s1" style="width: {{seg1_pct}}%">{{seg1_value}}</div>
+      <div class="seg s2" style="width: {{seg2_pct}}%">{{seg2_value}}</div>
+      <div class="seg s3" style="width: {{seg3_pct}}%">{{seg3_value}}</div>
+    </div>
+
+    <div class="stacked-legend">
+      <div class="legend-item" style="width: {{seg1_pct}}%">
+        <div class="legend-pct">{{seg1_pct_label}}% · TIME SAVINGS</div>
+        <div class="legend-name">Repetitive admin work automated</div>
+      </div>
+      <div class="legend-item" style="width: {{seg2_pct}}%">
+        <div class="legend-pct">{{seg2_pct_label}}% · LEAD RESPONSE</div>
+        <div class="legend-name">Faster reply to inbound</div>
+      </div>
+      <div class="legend-item" style="width: {{seg3_pct}}%">
+        <div class="legend-pct">{{seg3_pct_label}}% · ERRORS</div>
+        <div class="legend-name">Less rework</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="eyebrow">AUTOMATION READINESS</div>
+  <h2 class="section-title">{{readiness_score}} / 100 &nbsp;·&nbsp; {{band_short}}</h2>
+
+  <div class="readiness-box">
+    <div class="readiness-row">
+      <span class="readiness-num">{{readiness_score}}</span>
+      <span class="readiness-of">/100</span>
+      <span class="readiness-label">{{readiness_label}}</span>
+    </div>
+    <div class="readiness-bar"><div class="fill" style="width: {{readiness_score}}%"></div></div>
+  </div>
+
+  {{holdback_html}}
+
+  <p class="footnote">RANGE REFLECTS A 30% CONFIDENCE BAND AROUND THE MODELED MIDPOINT.</p>
+</section>
+
+<!-- ============== PAGE 3 — WINS + CTA ============== -->
+<section class="page-content">
+  <div class="eyebrow">YOUR TOP AUTOMATION WINS</div>
+  <h2 class="section-title">The three we'd start with.</h2>
+
+  <div class="wins">
+    {{wins_html}}
+  </div>
+
+  <div class="next-step">
+    <div class="eyebrow">NEXT STEP</div>
+    <h2 class="section-title">Want a human to validate this number?</h2>
+    <p class="body">
+      Thirty-minute fit call. We'll walk your stack, confirm what's achievable, and tell you honestly whether the Audit is worth it. No pressure. No slides.
+    </p>
+
+    <div class="cta-grid">
+      <div class="cta-text">
+        <strong>hello@lockeoperations.com</strong>
+        <span class="url">lockeoperations.com</span>
+        <span class="scan-hint">OR SCAN TO VISIT</span>
+      </div>
+      <div class="qr-wrap">
+        <!-- QR_PLACEHOLDER -->
+        <span class="qr-label">LOCKEOPERATIONS.COM</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="methodology">
+    <h3>HOW THESE NUMBERS WERE CALCULATED</h3>
+    <p>Time savings: hours/week × 52 × loaded cost × capture rate. Lead value: monthly leads × 12 × value × response lift. Error reduction: 20% of time-savings value (IDC: data workers spend ~20% of time replicating work).</p>
+    <p>Capture rate is derived from your operational readiness score. Confidence band is ±30% around the midpoint.</p>
+  </div>
+</section>
+
+</body>
+</html>

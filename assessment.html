@@ -287,11 +287,9 @@
   .diff-med { background: #fef3c7; color: #92400e; }
   .diff-hard { background: #fee2e2; color: #991b1b; }
 
-  .gate-wrap { position: relative; margin: 24px 0; }
-  .gated { filter: blur(6px); pointer-events: none; user-select: none; opacity: 0.85; }
+  .gate-wrap { margin: 24px 0; display: flex; flex-direction: column; gap: 18px; }
+  .gated { filter: blur(6px); pointer-events: none; user-select: none; opacity: 0.85; max-height: 180px; overflow: hidden; }
   .gate-overlay {
-    position: absolute;
-    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -536,62 +534,38 @@
 <div class="app" id="app"></div>
 
 <script>
-/* === HUBSPOT FORMS API ===
-   Test portal (na2) — Locke Operations developer test account.
-   To flip to production: replace the portal ID + form ID below with the
-   production values, no other changes required. */
-const HUBSPOT_PORTAL_ID = '246275387';
-const HUBSPOT_FORM_ID = '65e1f980-56ca-4c25-90a7-ce0289ca608e';
-const HUBSPOT_ENDPOINT = `https://api.hsforms.com/submissions/v3/integration/submit/${HUBSPOT_PORTAL_ID}/${HUBSPOT_FORM_ID}`;
+/* === LOCKE SUBMIT API ===
+   The form posts to our Railway service, which writes to HubSpot synchronously,
+   then generates+emails the PDF as a background job. The HubSpot mapping that
+   used to live here is now in /service/hubspot_client.py — keep it in ONE place.
 
-/* Maps from assessment internal codes to HubSpot dropdown values
-   (must match the dropdown options exactly, case-sensitive). */
-const HS_INDUSTRY_MAP = {
-  trades: 'Trades',
-  restoration: 'Restoration',
-  hospitality: 'Hospitality',
-  ae: 'A&E',
-  other: 'Other'
-};
-const HS_RESPONSE_MAP = {
-  fast: 'Under 5 minutes',
-  hour: 'Within an hour',
-  day: 'Same day',
-  slow: 'Next day or later'
-};
-const HS_BAND_MAP = { high: 'High', mid: 'Mid', low: 'Low' };
+   To point at a different environment (local dev, staging), override the
+   endpoint at runtime by setting window.LOCKE_API_ENDPOINT before this script
+   runs, e.g. via a <script>window.LOCKE_API_ENDPOINT='http://localhost:8000'</script>
+   tag earlier in the page. */
+const LOCKE_API_ENDPOINT = (window.LOCKE_API_ENDPOINT || 'https://api.lockeoperations.com') + '/api/submit';
 
-function buildHubSpotPayload(contact, a, r) {
-  const topWins = (r.wins || [])
-    .map(w => `${w.name} - $${w.value.toLocaleString()}/yr`)
-    .join(' | ');
+function buildLockePayload(contact, a) {
   return {
-    fields: [
-      { name: 'email', value: contact.email },
-      { name: 'firstname', value: contact.firstname },
-      { name: 'lastname', value: contact.lastname },
-      { name: 'company', value: contact.company },
-      { name: 'assessment_industry', value: HS_INDUSTRY_MAP[a.industry] || 'Other' },
-      { name: 'assessment_team_size', value: a.team },
-      { name: 'assessment_selected_tasks', value: (a.tasks || []).join(', ') },
-      { name: 'assessment_admin_hours_per_week', value: a.hours },
-      { name: 'assessment_loaded_hourly_rate', value: a.rate },
-      { name: 'assessment_response_time', value: HS_RESPONSE_MAP[a.response] || '' },
-      { name: 'assessment_monthly_leads', value: a.leads },
-      { name: 'assessment_avg_lead_value', value: a.value },
-      { name: 'assessment_system_maturity_score', value: a.maturity },
-      { name: 'assessment_process_consistency_score', value: a.consistency },
-      { name: 'assessment_readiness_score', value: r.readiness },
-      { name: 'assessment_readiness_band', value: HS_BAND_MAP[r.band] || '' },
-      { name: 'assessment_annual_midpoint', value: r.total },
-      { name: 'assessment_low_estimate', value: r.low },
-      { name: 'assessment_high_estimate', value: r.high },
-      { name: 'assessment_top_wins', value: topWins }
-    ],
-    context: {
-      pageUri: window.location.href,
-      pageName: 'Locke Operations Assessment'
-    }
+    contact: {
+      first_name: contact.firstname,
+      last_name: contact.lastname,
+      company: contact.company,
+      email: contact.email
+    },
+    answers: {
+      industry: a.industry,
+      team: a.team,
+      tasks: a.tasks || [],
+      hours: a.hours,
+      rate: a.rate,
+      response: a.response,
+      leads: a.leads,
+      value: a.value,
+      maturity: a.maturity,
+      consistency: a.consistency
+    },
+    page_uri: window.location.href
   };
 }
 
@@ -1100,10 +1074,6 @@ function renderResults() {
     } else {
       html += `
         <div class="gate-wrap">
-          <div class="panel gated">
-            <h3>Your top ${r.wins.length} automation wins</h3>
-            <div class="wins">${winsHtml}</div>
-          </div>
           <div class="gate-overlay">
             <div class="gate-box">
               <strong>See the ${r.wins.length} automations we'd start with</strong>
@@ -1119,6 +1089,10 @@ function renderResults() {
               <button class="btn btn-primary btn-block" id="unlock">Email me the report</button>
               <div class="gate-error" id="gate-error"></div>
             </div>
+          </div>
+          <div class="panel gated">
+            <h3>Your top ${r.wins.length} automation wins</h3>
+            <div class="wins">${winsHtml}</div>
           </div>
         </div>
       `;
@@ -1178,25 +1152,31 @@ function renderResults() {
         unlockBtn.textContent = 'Sending...';
         inputs.forEach(i => i.disabled = true);
 
-        // Build HubSpot payload
-        const r = calculate();
-        const payload = buildHubSpotPayload({ firstname, lastname, company, email }, state.answers, r);
+        // POST to Locke API (Railway). Server handles HubSpot write + PDF + email.
+        const payload = buildLockePayload({ firstname, lastname, company, email }, state.answers);
+        console.log('[Locke Assessment] Submitting:', LOCKE_API_ENDPOINT, payload);
 
         try {
-          const response = await fetch(HUBSPOT_ENDPOINT, {
+          const response = await fetch(LOCKE_API_ENDPOINT, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           });
+          const text = await response.text();
+          console.log('[Locke Assessment] API response:', response.status, text);
           if (!response.ok) {
-            const text = await response.text();
-            console.error('HubSpot submit failed:', response.status, text);
+            // 4xx/5xx — surface the message but still unlock results so the user
+            // gets value from the on-screen number. Background work didn't run.
+            let detail = `Submit returned ${response.status}.`;
+            try { detail = (JSON.parse(text).detail) || detail; } catch (_) { /* not JSON */ }
+            errorEl.textContent = `${detail} Your results are shown below; email hello@lockeoperations.com if you don't hear from us.`;
           }
         } catch (err) {
-          console.error('HubSpot submit network error:', err);
+          console.error('[Locke Assessment] Network error:', err);
+          errorEl.textContent = 'Network error reaching Locke Operations. Your results are shown below; please email hello@lockeoperations.com.';
         }
 
-        // Unlock content regardless of HubSpot success (user still gets value)
+        // Unlock content regardless of API success — user still gets the on-screen number.
         state.emailUnlocked = true;
         render();
       };
