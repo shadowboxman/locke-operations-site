@@ -298,12 +298,17 @@ def _locke_role_to_clerk_role(locke_role: str) -> str:
     return "org:admin" if locke_role in ("locke_admin", "client_admin") else "org:member"
 
 
-# Where Clerk sends users after they accept an invitation and complete signup.
-# Set via env var so dev (Vercel preview) and prod (lockeoperations.com/portal)
-# can differ without code changes.
-PORTAL_URL = os.environ.get(
-    "PORTAL_URL",
-    "https://locke-operations-site.vercel.app/portal",
+# Landing URL embedded in Clerk invitation emails. Clerk appends
+# `?__clerk_ticket=<ticket>` to this URL; the page MUST mount Clerk's SignUp
+# component so it can consume the ticket. The post-signup hand-off to /portal
+# is configured separately via signUpFallbackRedirectUrl in signup.html.
+#
+# Previously this pointed at /portal, which sent invitees to a page that
+# expects an authenticated session — Clerk then bounced them to /login,
+# where mountSignIn can't process invitation tickets.
+SIGNUP_URL = os.environ.get(
+    "SIGNUP_URL",
+    "https://locke-operations-site.vercel.app/signup",
 )
 
 
@@ -498,7 +503,7 @@ async def invite_user(
         clerk_org_id=org["clerk_org_id"],
         email=payload.email,
         clerk_role=_locke_role_to_clerk_role(payload.role),
-        redirect_url=PORTAL_URL,
+        redirect_url=SIGNUP_URL,
     )
 
     await _audit(
