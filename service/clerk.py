@@ -155,6 +155,133 @@ async def _fetch_clerk_user_email(clerk_user_id: str) -> Optional[str]:
 
 
 # ---------------------------------------------------------------
+# Admin-role guard
+# ---------------------------------------------------------------
+async def require_locke_admin(
+    user: dict = None,
+    authorization: Optional[str] = Header(None),
+) -> dict:
+    """FastAPI dependency: resolve current user AND require locke_admin or
+    locke_staff role in any active membership. Raises 403 otherwise.
+    """
+    # Resolve current user if not already (FastAPI's Depends chain handles
+    # this when used as a top-level dependency).
+    if user is None:
+        user = await get_current_user(authorization=authorization)
+
+    from db import admin_conn  # local import to avoid circular
+    async with admin_conn() as conn:
+        has_admin = await conn.fetchval(
+            """
+            SELECT EXISTS (
+              SELECT 1 FROM memberships
+              WHERE user_id = $1
+                AND role IN ('locke_admin', 'locke_staff')
+                AND status = 'active'
+            )
+            """,
+            user["id"],
+        )
+    if not has_admin:
+        raise HTTPException(status_code=403, detail="Locke admin role required")
+    return user
+
+
+# ---------------------------------------------------------------
+# Clerk REST API helpers (admin operations)
+# ---------------------------------------------------------------
+CLERK_API_BASE = "https://api.clerk.com/v1"
+
+
+def _clerk_headers() -> dict[str, str]:
+    if not CLERK_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Clerk secret key not configured")
+    return {
+        "Authorization": f"Bearer {CLERK_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
+async def create_clerk_organization(
+    name: str, slug: str, created_by_clerk_id: str,
+) -> dict[str, Any]:
+    """Create an organization in Clerk. Returns the Clerk org payload.
+
+    Raises HTTPException(400) on validation failure (e.g., slug taken).
+    """
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            f"{CLERK_API_BASE}/organizations",
+            headers=_clerk_headers(),
+            json={"name": name, "slug": slug, "created_by": created_by_clerk_id},
+        )
+    if resp.status_code >= 400:
+        log.warning("clerk.api.create_org_failed status=%d body=%s",
+                    resp.status_code, resp.text)
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return resp.json()
+
+
+async def list_clerk_organization_members(clerk_org_id: str) -> list[dict[str, Any]]:
+    """List active members of a Clerk org."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"{CLERK_API_BASE}/organizations/{clerk_org_id}/memberships",
+            headers=_clerk_headers(),
+        )
+    if resp.status_code >= 400:
+        log.warning("clerk.api.list_members_failed status=%d", resp.status_code)
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    body = resp.json()
+    # Clerk returns either a list or a paginated object depending on endpoint version.
+    return body if isinstance(body, list) else body.get("data", [])
+
+
+async def create_clerk_invitation(
+    clerk_org_id: str, email: str, clerk_role: str = "org:member",
+    redirect_url: Optional[str] = None,
+) -> dict[str, Any]:
+    """Send an invitation to join a Clerk organization.
+
+    Clerk emails the invitee. On acceptance, user.created and
+    organizationMembership.created webhooks fire.
+    """
+    payload: dict[str, Any] = {
+        "email_address": email,
+        "role": clerk_role,
+    }
+    if redirect_url:
+        payload["redirect_url"] = redirect_url
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            f"{CLERK_API_BASE}/organizations/{clerk_org_id}/invitations",
+            headers=_clerk_headers(),
+            json=payload,
+        )
+    if resp.status_code >= 400:
+        log.warning("clerk.api.invite_failed status=%d body=%s",
+                    resp.status_code, resp.text)
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return resp.json()
+
+
+async def list_clerk_pending_invitations(clerk_org_id: str) -> list[dict[str, Any]]:
+    """List pending (not yet accepted) invitations for a Clerk org."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"{CLERK_API_BASE}/organizations/{clerk_org_id}/invitations",
+            headers=_clerk_headers(),
+            params={"status": "pending"},
+        )
+    if resp.status_code >= 400:
+        log.warning("clerk.api.list_invitations_failed status=%d", resp.status_code)
+        return []
+    body = resp.json()
+    return body if isinstance(body, list) else body.get("data", [])
+
+
+# ---------------------------------------------------------------
 # Webhook signature verification
 # ---------------------------------------------------------------
 def verify_webhook(headers: dict[str, str], body: bytes) -> dict[str, Any]:
@@ -263,38 +390,45 @@ async def _on_org_updated(data: dict[str, Any]) -> None:
 async def _on_membership_created(data: dict[str, Any]) -> None:
     clerk_org_id = data["organization"]["id"]
     clerk_user_id = data["public_user_data"]["user_id"]
-
-    # Default Locke role: client_member. The admin invitation flow will
-    # eventually set this from the invitations table; for Phase 1 manual
-    # adjustments are fine.
-    locke_role = "client_member"
+    clerk_role = data.get("role", "org:member")  # e.g. "org:admin" or "org:member"
 
     async with admin_conn() as conn:
-        org_id = await conn.fetchval(
-            "SELECT id FROM organizations WHERE clerk_org_id = $1",
+        org_row = await conn.fetchrow(
+            "SELECT id, is_internal FROM organizations WHERE clerk_org_id = $1",
             clerk_org_id,
         )
         user_id = await conn.fetchval(
             "SELECT id FROM users WHERE clerk_user_id = $1",
             clerk_user_id,
         )
-        if not org_id or not user_id:
+        if not org_row or not user_id:
             log.warning(
                 "clerk.webhook.membership.skipped missing org=%s user=%s",
-                org_id, user_id,
+                org_row, user_id,
             )
             return
+
+        # Map Clerk's 2-role model back to our 4-role model based on whether
+        # this is an internal Locke org or a client org.
+        is_internal = org_row["is_internal"]
+        is_admin = clerk_role == "org:admin"
+        if is_internal:
+            locke_role = "locke_admin" if is_admin else "locke_staff"
+        else:
+            locke_role = "client_admin" if is_admin else "client_member"
+
         await conn.execute(
             "INSERT INTO memberships (user_id, org_id, role, status, activated_at) "
             "VALUES ($1, $2, $3, 'active', now()) "
             "ON CONFLICT (user_id, org_id) DO UPDATE "
-            "SET status = 'active', activated_at = COALESCE(memberships.activated_at, now()), "
+            "SET status = 'active', role = EXCLUDED.role, "
+            "    activated_at = COALESCE(memberships.activated_at, now()), "
             "    updated_at = now()",
-            user_id, org_id, locke_role,
+            user_id, org_row["id"], locke_role,
         )
         log.info(
-            "clerk.webhook.membership.created user=%s org=%s",
-            user_id, org_id,
+            "clerk.webhook.membership.created user=%s org=%s clerk_role=%s locke_role=%s",
+            user_id, org_row["id"], clerk_role, locke_role,
         )
 
 

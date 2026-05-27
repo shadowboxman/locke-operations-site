@@ -37,8 +37,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 import hubspot_client
-from clerk import get_current_user, handle_webhook_event, verify_webhook
-from db import close_pool, init_pool, user_conn
+from clerk import (
+    create_clerk_invitation,
+    create_clerk_organization,
+    get_current_user,
+    handle_webhook_event,
+    list_clerk_organization_members,
+    list_clerk_pending_invitations,
+    require_locke_admin,
+    verify_webhook,
+)
+from db import admin_conn, close_pool, init_pool, user_conn
 from email_client import send_assessment_email
 from pdf_generator import calculate, fmt_money, generate_pdf, pdf_filename
 
@@ -252,6 +261,235 @@ def _serialize_membership(row: dict) -> dict:
             "slug": row["org_slug"],
             "is_internal": row["org_is_internal"],
         },
+    }
+
+
+# ===============================================================
+# Admin endpoints (Phase 1 minimum CRUD, gated to locke_admin)
+# ===============================================================
+
+class CreateOrgRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    slug: str = Field(min_length=1, max_length=60, pattern=r"^[a-z0-9-]+$")
+
+
+class InviteUserRequest(BaseModel):
+    email: EmailStr
+    role: Literal["client_admin", "client_member"] = "client_member"
+
+
+def _locke_role_to_clerk_role(locke_role: str) -> str:
+    """Map our four-role model to Clerk's two defaults (free tier)."""
+    return "org:admin" if locke_role in ("locke_admin", "client_admin") else "org:member"
+
+
+async def _audit(
+    actor_user_id, action: str, resource_type: str = None,
+    resource_id=None, org_id=None, outcome: str = "success",
+    metadata: Optional[dict] = None,
+) -> None:
+    async with admin_conn() as conn:
+        await conn.execute(
+            """
+            INSERT INTO audit_events
+              (actor_user_id, action, resource_type, resource_id,
+               org_id, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """,
+            actor_user_id, action, resource_type, resource_id,
+            org_id, outcome, (metadata or {}),
+        )
+
+
+@app.post("/api/admin/orgs")
+async def create_org(
+    payload: CreateOrgRequest,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Create an organization in Clerk + Supabase."""
+    # 1. Create in Clerk
+    clerk_org = await create_clerk_organization(
+        name=payload.name,
+        slug=payload.slug,
+        created_by_clerk_id=admin["clerk_user_id"],
+    )
+    clerk_org_id = clerk_org["id"]
+
+    # 2. Insert into Supabase
+    async with admin_conn() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO organizations
+              (clerk_org_id, name, slug, status, is_internal)
+            VALUES ($1, $2, $3, 'active', false)
+            ON CONFLICT (clerk_org_id) DO UPDATE
+              SET name = EXCLUDED.name, slug = EXCLUDED.slug, updated_at = now()
+            RETURNING id, clerk_org_id, name, slug, status::text, created_at
+            """,
+            clerk_org_id, payload.name, payload.slug,
+        )
+
+    org_id = row["id"]
+    await _audit(
+        actor_user_id=admin["id"], action="org.created",
+        resource_type="organization", resource_id=org_id, org_id=org_id,
+        metadata={"name": payload.name, "slug": payload.slug,
+                  "clerk_org_id": clerk_org_id},
+    )
+
+    return {
+        "id": str(row["id"]),
+        "clerk_org_id": row["clerk_org_id"],
+        "name": row["name"],
+        "slug": row["slug"],
+        "status": row["status"],
+        "created_at": row["created_at"].isoformat(),
+    }
+
+
+@app.get("/api/admin/orgs")
+async def list_orgs(admin: dict = Depends(require_locke_admin)):
+    """List all organizations with active member counts."""
+    async with admin_conn() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+              o.id, o.clerk_org_id, o.name, o.slug,
+              o.status::text AS status, o.is_internal,
+              o.created_at,
+              (SELECT count(*) FROM memberships m
+                WHERE m.org_id = o.id AND m.status = 'active') AS member_count
+              FROM organizations o
+              ORDER BY o.is_internal DESC, o.created_at DESC
+            """
+        )
+    return {
+        "orgs": [
+            {
+                "id": str(r["id"]),
+                "clerk_org_id": r["clerk_org_id"],
+                "name": r["name"],
+                "slug": r["slug"],
+                "status": r["status"],
+                "is_internal": r["is_internal"],
+                "created_at": r["created_at"].isoformat(),
+                "member_count": r["member_count"],
+            }
+            for r in rows
+        ]
+    }
+
+
+@app.get("/api/admin/orgs/{org_id}")
+async def get_org(org_id: str, admin: dict = Depends(require_locke_admin)):
+    """Org detail: name, members, pending invitations."""
+    async with admin_conn() as conn:
+        org = await conn.fetchrow(
+            """
+            SELECT id, clerk_org_id, name, slug, status::text AS status,
+                   is_internal, created_at
+              FROM organizations WHERE id = $1
+            """,
+            uuid.UUID(org_id),
+        )
+        if not org:
+            raise HTTPException(status_code=404, detail="Org not found")
+
+        members = await conn.fetch(
+            """
+            SELECT u.id, u.email, u.name, u.clerk_user_id,
+                   m.role::text AS role, m.status::text AS membership_status,
+                   m.activated_at
+              FROM memberships m
+              JOIN users u ON u.id = m.user_id
+             WHERE m.org_id = $1
+             ORDER BY m.activated_at NULLS LAST, u.email
+            """,
+            org["id"],
+        )
+
+    # Pending invitations live in Clerk; fetch them live.
+    pending = []
+    if org["clerk_org_id"]:
+        try:
+            clerk_invites = await list_clerk_pending_invitations(org["clerk_org_id"])
+            pending = [
+                {
+                    "email": inv.get("email_address"),
+                    "clerk_role": inv.get("role"),
+                    "created_at": inv.get("created_at"),
+                }
+                for inv in clerk_invites
+            ]
+        except Exception as exc:
+            log.warning("admin.orgs.invitations_fetch_failed org=%s err=%s",
+                        org_id, exc)
+
+    return {
+        "org": {
+            "id": str(org["id"]),
+            "clerk_org_id": org["clerk_org_id"],
+            "name": org["name"],
+            "slug": org["slug"],
+            "status": org["status"],
+            "is_internal": org["is_internal"],
+            "created_at": org["created_at"].isoformat(),
+        },
+        "members": [
+            {
+                "id": str(m["id"]),
+                "email": m["email"],
+                "name": m["name"],
+                "clerk_user_id": m["clerk_user_id"],
+                "role": m["role"],
+                "status": m["membership_status"],
+                "activated_at": m["activated_at"].isoformat() if m["activated_at"] else None,
+            }
+            for m in members
+        ],
+        "pending_invitations": pending,
+    }
+
+
+@app.post("/api/admin/orgs/{org_id}/invitations")
+async def invite_user(
+    org_id: str,
+    payload: InviteUserRequest,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Invite a user to an org. Clerk sends the email; webhook handles
+    membership creation on acceptance."""
+    async with admin_conn() as conn:
+        org = await conn.fetchrow(
+            "SELECT id, clerk_org_id, name FROM organizations WHERE id = $1",
+            uuid.UUID(org_id),
+        )
+    if not org:
+        raise HTTPException(status_code=404, detail="Org not found")
+    if not org["clerk_org_id"]:
+        raise HTTPException(status_code=409, detail="Org has no Clerk link")
+
+    clerk_invite = await create_clerk_invitation(
+        clerk_org_id=org["clerk_org_id"],
+        email=payload.email,
+        clerk_role=_locke_role_to_clerk_role(payload.role),
+    )
+
+    await _audit(
+        actor_user_id=admin["id"], action="invitation.sent",
+        resource_type="invitation", org_id=org["id"],
+        metadata={
+            "email": payload.email,
+            "role": payload.role,
+            "clerk_invitation_id": clerk_invite.get("id"),
+        },
+    )
+
+    return {
+        "ok": True,
+        "clerk_invitation_id": clerk_invite.get("id"),
+        "email": payload.email,
+        "role": payload.role,
     }
 
 
