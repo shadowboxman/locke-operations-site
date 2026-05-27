@@ -214,7 +214,7 @@
     <div class="form-wrap">
       <div class="eyebrow">Client portal</div>
       <h1>Welcome back.</h1>
-      <p class="subtitle">Sign in to see the workflows we operate for your business.</p>
+      <p class="subtitle">Sign in to see the workflows we built for your business.</p>
 
       <div id="clerk-signin">
         <div class="signin-loading">
@@ -317,7 +317,10 @@
           colorNeutral: '#1A2332',
           borderRadius: '0',
           fontFamily: '"IBM Plex Sans", -apple-system, sans-serif',
-          fontFamilyButtons: '"IBM Plex Mono", monospace',
+          // Default buttons (incl. social "Continue with Google") use sans.
+          // The primary CTA below overrides back to mono to match Locke's
+          // monospace-CTA convention.
+          fontFamilyButtons: '"IBM Plex Sans", -apple-system, sans-serif',
           fontSize: '14px',
           spacingUnit: '1rem',
         },
