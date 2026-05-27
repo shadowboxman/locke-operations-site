@@ -583,6 +583,18 @@
     .issue-row .issue-type, .issue-row .issue-date { display: none; }
     main { padding: 24px 16px 40px; }
   }
+
+  /* Phone-sized topbar: hide the "Client portal" label and the topbar
+     Help / Admin links to prevent wrapping. Both are still reachable from
+     the user dropdown. */
+  @media (max-width: 700px) {
+    .topbar { padding: 0 12px; gap: 8px; }
+    .user-email { display: none; }
+    .portal-label { display: none; }
+    .help-link { display: none; }
+    .brand-row { gap: 16px; }
+    .user-row { gap: 8px; }
+  }
 </style>
 
 <!-- Clerk JS SDK (Phase 1: vanilla JS, no bundler) -->
@@ -614,8 +626,12 @@
             <div class="dropdown-label">Signed in as</div>
             <div class="dropdown-value" id="dropdownEmail">client@company.com</div>
           </div>
+          <div class="dropdown-section" id="dropdownAdminSection" style="display:none;">
+            <a class="dropdown-item" href="admin.html" style="color:var(--oxide);">↪ Admin panel</a>
+          </div>
           <div class="dropdown-section">
             <button class="dropdown-item" onclick="goTo('settings')">Account settings</button>
+            <a class="dropdown-item" href="mailto:hello@lockeoperations.com">Get help</a>
           </div>
           <div class="dropdown-section">
             <button class="dropdown-item danger" id="logoutBtn">Sign out</button>
@@ -1000,12 +1016,13 @@
     document.getElementById('submitEmail').textContent = email;
     document.getElementById('flashEmail').textContent = email;
 
-    // Reveal the Admin link in the topbar if this user has admin role.
+    // Reveal the Admin links (topbar + dropdown) if this user has admin role.
     const isLockeAdmin = (me.memberships || []).some(m =>
       m.role === 'locke_admin' || m.role === 'locke_staff'
     );
     if (isLockeAdmin) {
       document.getElementById('adminLink').style.display = 'inline-block';
+      document.getElementById('dropdownAdminSection').style.display = 'block';
     }
 
     // Re-render issues now that we know the user's email (issues are scoped per-user).

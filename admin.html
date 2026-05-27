@@ -530,10 +530,14 @@
       flex-wrap: wrap;
     }
 
-    /* Topbar: hide the user email (still in dropdown), tighten padding */
+    /* Topbar: hide the user email (still in dropdown), tighten padding.
+       Also hide the "Admin" label (the URL tells the user where they are)
+       and the "↩ Portal" link (dropdown has "View as client" for the same
+       thing). Without this, both wrap on narrow screens. */
     .topbar { padding: 0 12px; gap: 8px; }
     .user-email { display: none; }
-    .portal-label { padding-left: 12px; }
+    .portal-label { display: none; }
+    .help-link { display: none; }
     .brand-row { gap: 16px; }
     .user-row { gap: 8px; }
 
