@@ -195,17 +195,30 @@
     .subtitle { font-size: 14px; }
   }
 
-  /* OTP boxes: same fix as login.html. Fixed-width boxes centered in
-     the row. Outer container forced to 100% width. Override Clerk's
-     --root-height CSS variable so it matches our box height. */
+  /* OTP boxes: same fix as login.html. Force overflow: visible all the
+     way up Clerk's wrapper chain (any ancestor with overflow: hidden will
+     clip the focus ring and on some library versions clip the top of the
+     boxes themselves). Set --root-height larger than input height to give
+     the focus ring breathing room. */
+  .form-wrap .cl-rootBox,
+  .form-wrap .cl-card,
+  .form-wrap .cl-cardBox,
+  .form-wrap .cl-formField,
+  .form-wrap .cl-formFieldRow,
+  .form-wrap .cl-otpCodeField,
+  .form-wrap .cl-otpCodeFieldInputContainer,
+  .form-wrap [data-input-otp-container] {
+    overflow: visible !important;
+  }
   .form-wrap .cl-otpCodeFieldInputContainer,
   .form-wrap [data-input-otp-container] {
     display: block !important;
     width: 100% !important;
     max-width: 100% !important;
     height: auto !important;
-    overflow: visible !important;
-    --root-height: 48px;
+    min-height: 56px !important;
+    padding: 4px 0 !important;
+    --root-height: 56px;
   }
   .form-wrap .cl-otpCodeFieldInputs {
     display: flex !important;
@@ -214,34 +227,47 @@
     justify-content: center !important;
     overflow: visible !important;
     height: auto !important;
+    padding: 2px 0 !important;
   }
   .form-wrap .cl-otpCodeFieldInput,
-  .form-wrap [data-testid="otp-input-segment"] {
+  .form-wrap [data-testid="otp-input-segment"],
+  .form-wrap [data-input-otp-slot] {
     flex: 0 0 auto !important;
     width: 44px !important;
     height: 48px !important;
     min-width: 0 !important;
     max-width: none !important;
     box-sizing: border-box !important;
+    line-height: 48px !important;
   }
   @media (max-width: 500px) {
     .form-wrap .cl-otpCodeFieldInputs { gap: 6px !important; }
     .form-wrap .cl-otpCodeFieldInputContainer,
-    .form-wrap [data-input-otp-container] { --root-height: 44px; }
+    .form-wrap [data-input-otp-container] {
+      --root-height: 52px;
+      min-height: 52px !important;
+    }
     .form-wrap .cl-otpCodeFieldInput,
-    .form-wrap [data-testid="otp-input-segment"] {
+    .form-wrap [data-testid="otp-input-segment"],
+    .form-wrap [data-input-otp-slot] {
       width: 40px !important;
       height: 44px !important;
+      line-height: 44px !important;
     }
   }
   @media (max-width: 380px) {
     .form-wrap .cl-otpCodeFieldInputs { gap: 4px !important; }
     .form-wrap .cl-otpCodeFieldInputContainer,
-    .form-wrap [data-input-otp-container] { --root-height: 40px; }
+    .form-wrap [data-input-otp-container] {
+      --root-height: 48px;
+      min-height: 48px !important;
+    }
     .form-wrap .cl-otpCodeFieldInput,
-    .form-wrap [data-testid="otp-input-segment"] {
+    .form-wrap [data-testid="otp-input-segment"],
+    .form-wrap [data-input-otp-slot] {
       width: 36px !important;
       height: 40px !important;
+      line-height: 40px !important;
     }
   }
 </style>

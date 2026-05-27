@@ -98,9 +98,18 @@
   /* Container for Clerk's mounted SignIn component */
   #clerk-signin {
     min-height: 360px;
-    /* Clerk renders some absolutely-positioned hints ('Last used' pill) that
-       would otherwise overflow the wrapper on narrow phones. */
-    overflow-x: hidden;
+    /* Note: do NOT set overflow-x: hidden here. Per CSS spec, when one axis is
+       'hidden' and the other is 'visible', the visible axis is coerced to 'auto',
+       which clips the OTP box focus ring and the top of the boxes themselves. */
+    overflow: visible;
+  }
+  /* Narrow phones only: clip the 'Last used' pill that overflows horizontally.
+     Keep overflow-y explicit so the OTP boxes don't get clipped vertically. */
+  @media (max-width: 500px) {
+    #clerk-signin {
+      overflow-x: clip;
+      overflow-y: visible;
+    }
   }
 
   /* Loading state shown until Clerk mounts */
@@ -211,19 +220,35 @@
     .subtitle { font-size: 14px; }
   }
 
-  /* OTP boxes: Clerk uses `input-otp` library. Fixed-width boxes centered
-     in the row. The outer container needs explicit width:100% because
-     Clerk sizes it to content by default. Also override --root-height
-     (Clerk's internal CSS variable that controls row height) so it
-     matches our box height and doesn't clip the top. */
+  /* OTP boxes: Clerk uses `input-otp` library. The library sets a fixed
+     `height: var(--root-height)` on its container, and Clerk wraps it in
+     several layers (cl-rootBox, cl-card, cl-formField, cl-formFieldRow,
+     cl-otpCodeField, cl-otpCodeFieldInputContainer). Any of those with
+     `overflow: hidden` will clip the focus ring (and on some versions
+     clip the top of the boxes themselves). Force `overflow: visible` all
+     the way up, set --root-height larger than the input so the focus
+     ring has breathing room, and add explicit padding for safety. */
+  .form-wrap .cl-rootBox,
+  .form-wrap .cl-card,
+  .form-wrap .cl-cardBox,
+  .form-wrap .cl-formField,
+  .form-wrap .cl-formFieldRow,
+  .form-wrap .cl-otpCodeField,
+  .form-wrap .cl-otpCodeFieldInputContainer,
+  .form-wrap [data-input-otp-container] {
+    overflow: visible !important;
+  }
   .form-wrap .cl-otpCodeFieldInputContainer,
   .form-wrap [data-input-otp-container] {
     display: block !important;
     width: 100% !important;
     max-width: 100% !important;
     height: auto !important;
-    overflow: visible !important;
-    --root-height: 48px;
+    min-height: 56px !important;
+    padding: 4px 0 !important;
+    /* Keep --root-height slightly larger than input height so the focus
+       ring (rendered via box-shadow outside the input) isn't clipped. */
+    --root-height: 56px;
   }
   .form-wrap .cl-otpCodeFieldInputs {
     display: flex !important;
@@ -232,34 +257,47 @@
     justify-content: center !important;
     overflow: visible !important;
     height: auto !important;
+    padding: 2px 0 !important;
   }
   .form-wrap .cl-otpCodeFieldInput,
-  .form-wrap [data-testid="otp-input-segment"] {
+  .form-wrap [data-testid="otp-input-segment"],
+  .form-wrap [data-input-otp-slot] {
     flex: 0 0 auto !important;
     width: 44px !important;
     height: 48px !important;
     min-width: 0 !important;
     max-width: none !important;
     box-sizing: border-box !important;
+    line-height: 48px !important;
   }
   @media (max-width: 500px) {
     .form-wrap .cl-otpCodeFieldInputs { gap: 6px !important; }
     .form-wrap .cl-otpCodeFieldInputContainer,
-    .form-wrap [data-input-otp-container] { --root-height: 44px; }
+    .form-wrap [data-input-otp-container] {
+      --root-height: 52px;
+      min-height: 52px !important;
+    }
     .form-wrap .cl-otpCodeFieldInput,
-    .form-wrap [data-testid="otp-input-segment"] {
+    .form-wrap [data-testid="otp-input-segment"],
+    .form-wrap [data-input-otp-slot] {
       width: 40px !important;
       height: 44px !important;
+      line-height: 44px !important;
     }
   }
   @media (max-width: 380px) {
     .form-wrap .cl-otpCodeFieldInputs { gap: 4px !important; }
     .form-wrap .cl-otpCodeFieldInputContainer,
-    .form-wrap [data-input-otp-container] { --root-height: 40px; }
+    .form-wrap [data-input-otp-container] {
+      --root-height: 48px;
+      min-height: 48px !important;
+    }
     .form-wrap .cl-otpCodeFieldInput,
-    .form-wrap [data-testid="otp-input-segment"] {
+    .form-wrap [data-testid="otp-input-segment"],
+    .form-wrap [data-input-otp-slot] {
       width: 36px !important;
       height: 40px !important;
+      line-height: 40px !important;
     }
   }
 </style>
