@@ -279,6 +279,73 @@
   .badge-archived { background: rgba(168, 65, 46, 0.06); color: var(--concrete); }
   .badge-internal { background: var(--navy); color: var(--bone); }
 
+  /* CARD LAYOUT (mobile alternative to tables) */
+  .cards {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .card {
+    border: 1px solid var(--hairline-strong);
+    background: var(--bone);
+    padding: 14px 16px;
+  }
+  .card.clickable { cursor: pointer; }
+  .card.clickable:hover { background: var(--surface); }
+  .card-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .card-row + .card-row { margin-top: 6px; }
+  .card-title {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 500;
+    font-size: 15px;
+    color: var(--navy);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    word-break: break-word;
+  }
+  .card-sub {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--concrete);
+    word-break: break-all;
+  }
+  .card-field {
+    margin-top: 8px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .card-field-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--concrete);
+    min-width: 70px;
+    flex-shrink: 0;
+  }
+  .card-field-value {
+    font-size: 13px;
+    color: var(--navy);
+    flex: 1;
+    word-break: break-word;
+  }
+  .card-actions {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--hairline);
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+
   /* SECTION HEADER WITH ACTION */
   .section-row {
     display: flex;
@@ -470,26 +537,9 @@
     .brand-row { gap: 16px; }
     .user-row { gap: 8px; }
 
-    /* Tables: horizontal scroll instead of breaking layout.
-       Containers are the divs the JS renders into. */
-    #orgsTableContainer,
-    #membersTableContainer,
-    #pendingTableContainer {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      border: 1px solid var(--hairline-strong);
-    }
-    #orgsTableContainer .table,
-    #membersTableContainer .table,
-    #pendingTableContainer .table {
-      min-width: 520px;
-      border: none;
-    }
-    .table th, .table td {
-      padding: 8px 10px;
-      font-size: 12px;
-      white-space: nowrap;
-    }
+    /* Swap tables out for the card layout */
+    .table { display: none; }
+    .cards { display: flex; }
 
     /* Modal: constrain to viewport on narrow phones */
     .modal-backdrop { padding-top: 32px; padding-left: 12px; padding-right: 12px; }
@@ -926,7 +976,24 @@
               </tr>
             `).join('')}
           </tbody>
-        </table>`;
+        </table>
+        <div class="cards">
+          ${orgs.map(o => `
+            <div class="card clickable" onclick="viewOrg('${o.id}')">
+              <div class="card-row">
+                <div class="card-title">
+                  ${escapeHtml(o.name)}
+                  ${o.is_internal ? '<span class="badge badge-internal">Internal</span>' : ''}
+                </div>
+                <span class="badge badge-${o.status}">${o.status}</span>
+              </div>
+              <div class="card-sub" style="margin-top:6px;">${escapeHtml(o.slug)}</div>
+              <div class="card-sub" style="margin-top:8px;">
+                ${o.member_count} member${o.member_count === 1 ? '' : 's'} · Created ${fmtDate(o.created_at)}
+              </div>
+            </div>
+          `).join('')}
+        </div>`;
     } catch (err) {
       container.innerHTML = `<div class="empty"><div class="empty-title">Failed to load</div><div class="empty-sub">${escapeHtml(err.message)}</div></div>`;
     }
@@ -1032,7 +1099,32 @@
               </tr>
             `).join('')}
           </tbody>
-        </table>`;
+        </table>
+        <div class="cards">
+          ${members.map(m => `
+            <div class="card">
+              <div class="card-row">
+                <div class="card-title">${escapeHtml(m.email)}</div>
+                <span class="badge badge-${m.status === 'active' ? 'active' : 'archived'}">${m.status}</span>
+              </div>
+              ${m.name ? `<div class="card-sub" style="margin-top:4px;">${escapeHtml(m.name)}</div>` : ''}
+              <div class="card-field">
+                <div class="card-field-label">Role</div>
+                <div class="card-field-value"><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(m.role)}</code></div>
+              </div>
+              <div class="card-field">
+                <div class="card-field-label">Joined</div>
+                <div class="card-field-value">${m.activated_at ? fmtDate(m.activated_at) : '—'}</div>
+              </div>
+              ${canActOnMembers && m.status === 'active' ? `
+                <div class="card-actions">
+                  <button class="btn-link" onclick='openEditRole(${JSON.stringify(m)})'>Edit role</button>
+                  <button class="btn-link" style="color:var(--oxide);" onclick='confirmRemoveMember(${JSON.stringify(m)})'>Remove</button>
+                </div>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>`;
     }
 
     // Pending invitations
@@ -1058,7 +1150,29 @@
               </tr>
             `).join('')}
           </tbody>
-        </table>`;
+        </table>
+        <div class="cards">
+          ${pending_invitations.map(p => `
+            <div class="card">
+              <div class="card-row">
+                <div class="card-title">${escapeHtml(p.email || '—')}</div>
+              </div>
+              <div class="card-field">
+                <div class="card-field-label">Clerk role</div>
+                <div class="card-field-value"><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(p.clerk_role || '—')}</code></div>
+              </div>
+              <div class="card-field">
+                <div class="card-field-label">Sent</div>
+                <div class="card-field-value">${p.created_at ? fmtDate(new Date(p.created_at).toISOString()) : '—'}</div>
+              </div>
+              ${p.id ? `
+                <div class="card-actions">
+                  <button class="btn-link" style="color:var(--oxide);" onclick='confirmRevokeInvitation(${JSON.stringify(p)})'>Revoke</button>
+                </div>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>`;
     }
   }
 
