@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Locke Operations — Client login</title>
+<title>Locke Operations — Accept invitation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -31,19 +31,13 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
   }
-
-  /* LEFT — sign-in column */
   .form-side {
     padding: 40px 60px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
   }
-  .topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
+  .topbar { display: flex; justify-content: space-between; align-items: center; }
   .wordmark {
     font-family: "IBM Plex Sans", sans-serif;
     font-weight: 600;
@@ -95,19 +89,15 @@
     line-height: 1.55;
   }
 
-  /* Container for Clerk's mounted SignIn component */
-  #clerk-signin {
-    min-height: 360px;
-  }
+  #clerk-signup { min-height: 360px; }
 
-  /* Loading state shown until Clerk mounts */
-  .signin-loading {
+  .signup-loading {
     padding: 60px 0;
     text-align: center;
     color: var(--concrete);
     font-size: 14px;
   }
-  .signin-loading .pulse {
+  .signup-loading .pulse {
     display: inline-block;
     width: 8px;
     height: 8px;
@@ -140,7 +130,6 @@
     color: var(--concrete);
   }
 
-  /* RIGHT — quote / trust panel */
   .quote-side {
     background: var(--navy);
     color: var(--bone);
@@ -199,8 +188,6 @@
     .form-wrap { padding: 24px 0; }
     h1 { font-size: 28px; }
   }
-
-  /* Very narrow phones: shrink padding so Clerk's wider components fit */
   @media (max-width: 500px) {
     .form-side { padding: 24px 16px; }
     .form-wrap { padding: 16px 0; }
@@ -212,7 +199,6 @@
 <body>
 <div class="page">
 
-  <!-- LEFT — sign-in -->
   <div class="form-side">
     <div class="topbar">
       <a class="wordmark" href="index.html">LOCKE <span class="dot">O</span>PERATIONS</a>
@@ -220,18 +206,18 @@
     </div>
 
     <div class="form-wrap">
-      <div class="eyebrow">Client portal</div>
-      <h1>Welcome back.</h1>
-      <p class="subtitle">Sign in to see the workflows we built for your business.</p>
+      <div class="eyebrow">Accept invitation</div>
+      <h1>Set up your account.</h1>
+      <p class="subtitle">Finish creating your account to access your organization's portal.</p>
 
-      <div id="clerk-signin">
-        <div class="signin-loading">
-          <span class="pulse"></span>Loading sign-in...
+      <div id="clerk-signup">
+        <div class="signup-loading">
+          <span class="pulse"></span>Loading sign-up...
         </div>
       </div>
 
       <div class="help">
-        Trouble signing in? <a href="mailto:hello@lockeoperations.com">hello@lockeoperations.com</a>
+        Trouble? <a href="mailto:hello@lockeoperations.com">hello@lockeoperations.com</a>
       </div>
     </div>
 
@@ -241,7 +227,6 @@
     </div>
   </div>
 
-  <!-- RIGHT — quote / trust panel -->
   <aside class="quote-side">
     <svg class="quote-mark" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
       <circle cx="16" cy="16" r="12" fill="none" stroke="#F25A1A" stroke-width="2"/>
@@ -249,18 +234,16 @@
       <line x1="2" y1="16" x2="30" y2="16" stroke="#F25A1A" stroke-width="2"/>
       <circle cx="16" cy="16" r="1.5" fill="#F25A1A"/>
     </svg>
-
     <div class="quote-body">
-      <div class="quote-eyebrow">Inside the portal</div>
+      <div class="quote-eyebrow">Welcome to your portal</div>
       <div class="quote-text">
-        Every workflow we build for you lives here. Status, monthly review, the runbook, the people on our team accountable for it, and the contract.
+        Once you finish setting up, you'll see the workflows we built for your business in one place.
       </div>
       <div class="quote-attr">
         <span class="name">Audit · Build · Run</span><br>
         Three packages, one workflow, one result
       </div>
     </div>
-
     <div class="quote-footer">
       Locke Operations · Client portal
     </div>
@@ -268,7 +251,6 @@
 
 </div>
 
-<!-- Clerk JS SDK -->
 <script
   async
   crossorigin="anonymous"
@@ -285,8 +267,8 @@
       attempts++;
     }
     if (!window.Clerk) {
-      document.getElementById('clerk-signin').innerHTML =
-        '<div class="signin-loading" style="color:#1A2332;">Sign-in failed to load. ' +
+      document.getElementById('clerk-signup').innerHTML =
+        '<div class="signup-loading" style="color:#1A2332;">Sign-up failed to load. ' +
         '<a href="#" onclick="window.location.reload();return false;" style="color:#1A2332;text-decoration:underline;">Refresh</a> ' +
         'or email hello@lockeoperations.com.</div>';
       return;
@@ -294,26 +276,22 @@
 
     await Clerk.load();
 
-    // Already signed in → go to portal.
+    // Already signed in → go straight to portal.
     if (Clerk.user) {
-      window.location.href = '/portal.html';
+      window.location.href = '/portal';
       return;
     }
 
-    // Clear our loading placeholder so Clerk can render into a clean container.
-    // Without this, Clerk appends below the loading div instead of replacing it.
-    const mountTarget = document.getElementById('clerk-signin');
+    const mountTarget = document.getElementById('clerk-signup');
     mountTarget.innerHTML = '';
 
-    Clerk.mountSignIn(mountTarget, {
-      fallbackRedirectUrl: window.location.origin + '/portal.html',
-      // Tells Clerk where sign-up lives. Invitation links from Clerk emails
-      // now route invitees to /signup (which mounts mountSignUp and handles
-      // the invitation ticket) instead of bouncing to /login.
-      signUpUrl: window.location.origin + '/signup',
+    Clerk.mountSignUp(mountTarget, {
+      // After sign-up succeeds, send the user to the portal.
+      fallbackRedirectUrl: window.location.origin + '/portal',
+      // If user already has an account, point them at our sign-in page.
+      signInUrl: '/login',
       appearance: {
         layout: {
-          // The "Sign up" footer is a layout-level concern; hide via element override below.
           socialButtonsVariant: 'blockButton',
           socialButtonsPlacement: 'top',
         },
@@ -328,50 +306,19 @@
           colorNeutral: '#1A2332',
           borderRadius: '0',
           fontFamily: '"IBM Plex Sans", -apple-system, sans-serif',
-          // Default buttons (incl. social "Continue with Google") use sans.
-          // The primary CTA below overrides back to mono to match Locke's
-          // monospace-CTA convention.
           fontFamilyButtons: '"IBM Plex Sans", -apple-system, sans-serif',
           fontSize: '14px',
           spacingUnit: '1rem',
         },
         elements: {
-          // Outer card: completely flat, no shadow, no border, no padding.
           rootBox: { width: '100%' },
-          card: {
-            boxShadow: 'none',
-            border: 'none',
-            padding: '0',
-            background: 'transparent',
-          },
-          cardBox: {
-            boxShadow: 'none',
-            border: 'none',
-            background: 'transparent',
-          },
-
-          // Hide Clerk's header (we provide h1 + subtitle in our wrapper).
+          card: { boxShadow: 'none', border: 'none', padding: '0', background: 'transparent' },
+          cardBox: { boxShadow: 'none', border: 'none', background: 'transparent' },
           header: { display: 'none' },
           headerTitle: { display: 'none' },
           headerSubtitle: { display: 'none' },
-
-          // Hide the sign-up footer entirely (clients are invite-only).
-          footer: { display: 'none' },
-          footerAction: { display: 'none' },
-          footerActionText: { display: 'none' },
-          footerActionLink: { display: 'none' },
-
-          // Internal form rows — remove the horizontal dividers between sections.
-          formFieldRow: {
-            border: 'none',
-            padding: '0',
-          },
-          form: {
-            gap: '16px',
-            border: 'none',
-          },
-
-          // Social ("Continue with Google") button.
+          // Keep the "Already have an account? Sign in" link visible —
+          // invitees with prior Clerk accounts need it.
           socialButtonsBlockButton: {
             borderRadius: '0',
             border: '1px solid rgba(26, 35, 50, 0.22)',
@@ -382,15 +329,8 @@
             letterSpacing: '0',
             fontSize: '14px',
           },
-
-          // The "or" divider between social and email auth.
-          dividerRow: {
-            margin: '20px 0',
-          },
-          dividerLine: {
-            backgroundColor: 'rgba(26, 35, 50, 0.10)',
-            height: '1px',
-          },
+          dividerRow: { margin: '20px 0' },
+          dividerLine: { backgroundColor: 'rgba(26, 35, 50, 0.10)', height: '1px' },
           dividerText: {
             fontFamily: '"IBM Plex Mono", monospace',
             fontSize: '10px',
@@ -398,8 +338,6 @@
             letterSpacing: '0.14em',
             color: '#A8A6A0',
           },
-
-          // Form field labels: mono + uppercase to match the rest of the UI.
           formFieldLabel: {
             fontFamily: '"IBM Plex Mono", monospace',
             fontSize: '10px',
@@ -415,8 +353,6 @@
             fontSize: '14px',
             fontFamily: '"IBM Plex Sans", sans-serif',
           },
-
-          // Primary CTA button — match the orange "Submit issue" button in the portal.
           formButtonPrimary: {
             backgroundColor: '#F25A1A',
             borderRadius: '0',
@@ -429,23 +365,6 @@
             boxShadow: 'none',
             '&:hover': { backgroundColor: '#1A2332' },
           },
-
-          // "Last used" pill on the email input.
-          formFieldHintText: {
-            fontFamily: '"IBM Plex Mono", monospace',
-            fontSize: '10px',
-            color: '#A8A6A0',
-          },
-
-          // Identity preview block (when returning user).
-          identityPreview: {
-            border: '1px solid rgba(26, 35, 50, 0.22)',
-            borderRadius: '0',
-            background: '#FAF8F2',
-          },
-
-          // Verification code (OTP) input row + individual boxes.
-          // Defaults are too wide for small phone viewports.
           otpCodeFieldInputs: {
             gap: '6px',
             justifyContent: 'space-between',
