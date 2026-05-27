@@ -98,6 +98,9 @@
   /* Container for Clerk's mounted SignIn component */
   #clerk-signin {
     min-height: 360px;
+    /* Clerk renders some absolutely-positioned hints ('Last used' pill) that
+       would otherwise overflow the wrapper on narrow phones. */
+    overflow-x: hidden;
   }
 
   /* Loading state shown until Clerk mounts */
@@ -430,11 +433,16 @@
             '&:hover': { backgroundColor: '#1A2332' },
           },
 
-          // "Last used" pill on the email input.
+          // "Last used" pill on the email input. Constrain so it doesn't
+          // overflow the form wrapper on narrow phones.
           formFieldHintText: {
             fontFamily: '"IBM Plex Mono", monospace',
             fontSize: '10px',
             color: '#A8A6A0',
+            maxWidth: '60px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           },
 
           // Identity preview block (when returning user).
