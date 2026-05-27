@@ -2,11 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
   "trailingSlash": false,
-  "rewrites": [
+  "redirects": [
     {
-      "source": "/",
+      "source": "/(.*)",
       "has": [{ "type": "host", "value": "portal.lockeoperations.com" }],
-      "destination": "/portal.html"
+      "destination": "https://lockeoperations.com/portal",
+      "permanent": false
     }
   ],
   "headers": [
