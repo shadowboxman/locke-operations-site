@@ -157,19 +157,48 @@ async def _fetch_clerk_user_email(clerk_user_id: str) -> Optional[str]:
 # ---------------------------------------------------------------
 # Admin-role guard
 # ---------------------------------------------------------------
+ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "")
+ADMIN_API_KEY_USER_EMAIL = os.environ.get(
+    "ADMIN_API_KEY_USER_EMAIL", "dan@lockeoperations.com",
+)
+
+
 async def require_locke_admin(
-    user: dict = None,
     authorization: Optional[str] = Header(None),
+    x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key"),
 ) -> dict:
-    """FastAPI dependency: resolve current user AND require locke_admin or
-    locke_staff role in any active membership. Raises 403 otherwise.
+    """FastAPI dependency: accepts either a Clerk Bearer JWT (browser/admin
+    UI) or an X-Admin-Key header (Retool, scripts). Resolves to a users
+    row and confirms locke_admin / locke_staff role. Raises 403 otherwise.
+
+    Why two auth paths: Clerk session JWTs are short-lived and tied to a
+    browser refresh flow that Retool can't run. A static admin API key is
+    simpler for service-to-service admin tooling. Actions attribute to the
+    user whose email matches ADMIN_API_KEY_USER_EMAIL.
     """
-    # Resolve current user if not already (FastAPI's Depends chain handles
-    # this when used as a top-level dependency).
+    from db import admin_conn  # local import to avoid circular
+
+    user: Optional[dict] = None
+
+    # Path 1: admin API key (Retool, scripts).
+    if ADMIN_API_KEY and x_admin_key and x_admin_key == ADMIN_API_KEY:
+        async with admin_conn() as conn:
+            row = await conn.fetchrow(
+                "SELECT id, clerk_user_id, email, name FROM users WHERE email = $1",
+                ADMIN_API_KEY_USER_EMAIL,
+            )
+        if not row:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Admin API key configured but no user row for {ADMIN_API_KEY_USER_EMAIL}",
+            )
+        user = dict(row)
+
+    # Path 2: Clerk Bearer JWT (browser).
     if user is None:
         user = await get_current_user(authorization=authorization)
 
-    from db import admin_conn  # local import to avoid circular
+    # Role check (applies regardless of auth path).
     async with admin_conn() as conn:
         has_admin = await conn.fetchval(
             """
@@ -279,6 +308,77 @@ async def list_clerk_pending_invitations(clerk_org_id: str) -> list[dict[str, An
         return []
     body = resp.json()
     return body if isinstance(body, list) else body.get("data", [])
+
+
+async def update_clerk_organization(
+    clerk_org_id: str, name: Optional[str] = None, slug: Optional[str] = None,
+) -> dict[str, Any]:
+    """Update name and/or slug on a Clerk organization."""
+    payload: dict[str, Any] = {}
+    if name is not None:
+        payload["name"] = name
+    if slug is not None:
+        payload["slug"] = slug
+    if not payload:
+        return {}
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.patch(
+            f"{CLERK_API_BASE}/organizations/{clerk_org_id}",
+            headers=_clerk_headers(),
+            json=payload,
+        )
+    if resp.status_code >= 400:
+        log.warning("clerk.api.update_org_failed status=%d body=%s",
+                    resp.status_code, resp.text)
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return resp.json()
+
+
+async def update_clerk_membership_role(
+    clerk_org_id: str, clerk_user_id: str, clerk_role: str,
+) -> dict[str, Any]:
+    """Update a user's role within a Clerk org. clerk_role = org:admin or org:member."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.patch(
+            f"{CLERK_API_BASE}/organizations/{clerk_org_id}/memberships/{clerk_user_id}",
+            headers=_clerk_headers(),
+            json={"role": clerk_role},
+        )
+    if resp.status_code >= 400:
+        log.warning("clerk.api.update_membership_failed status=%d body=%s",
+                    resp.status_code, resp.text)
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return resp.json()
+
+
+async def delete_clerk_membership(clerk_org_id: str, clerk_user_id: str) -> None:
+    """Remove a user from a Clerk org."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.delete(
+            f"{CLERK_API_BASE}/organizations/{clerk_org_id}/memberships/{clerk_user_id}",
+            headers=_clerk_headers(),
+        )
+    if resp.status_code >= 400 and resp.status_code != 404:
+        # 404 is fine — membership already gone
+        log.warning("clerk.api.delete_membership_failed status=%d body=%s",
+                    resp.status_code, resp.text)
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+
+async def revoke_clerk_invitation(
+    clerk_org_id: str, clerk_invitation_id: str,
+) -> dict[str, Any]:
+    """Revoke a pending Clerk invitation."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            f"{CLERK_API_BASE}/organizations/{clerk_org_id}/invitations/{clerk_invitation_id}/revoke",
+            headers=_clerk_headers(),
+        )
+    if resp.status_code >= 400:
+        log.warning("clerk.api.revoke_invitation_failed status=%d body=%s",
+                    resp.status_code, resp.text)
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return resp.json() if resp.content else {}
 
 
 # ---------------------------------------------------------------

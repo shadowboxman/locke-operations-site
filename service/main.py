@@ -15,7 +15,7 @@ import logging
 import os
 import sys
 import uuid
-from typing import Literal
+from typing import Literal, Optional
 
 from dotenv import load_dotenv
 
@@ -40,11 +40,15 @@ import hubspot_client
 from clerk import (
     create_clerk_invitation,
     create_clerk_organization,
+    delete_clerk_membership,
     get_current_user,
     handle_webhook_event,
     list_clerk_organization_members,
     list_clerk_pending_invitations,
     require_locke_admin,
+    revoke_clerk_invitation,
+    update_clerk_membership_role,
+    update_clerk_organization,
     verify_webhook,
 )
 from db import admin_conn, close_pool, init_pool, user_conn
@@ -278,6 +282,17 @@ class InviteUserRequest(BaseModel):
     role: Literal["client_admin", "client_member"] = "client_member"
 
 
+class UpdateOrgRequest(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    slug: Optional[str] = Field(default=None, min_length=1, max_length=60,
+                                pattern=r"^[a-z0-9-]+$")
+    status: Optional[Literal["active", "suspended", "archived"]] = None
+
+
+class UpdateMemberRoleRequest(BaseModel):
+    role: Literal["locke_admin", "locke_staff", "client_admin", "client_member"]
+
+
 def _locke_role_to_clerk_role(locke_role: str) -> str:
     """Map our four-role model to Clerk's two defaults (free tier)."""
     return "org:admin" if locke_role in ("locke_admin", "client_admin") else "org:member"
@@ -415,6 +430,7 @@ async def get_org(org_id: str, admin: dict = Depends(require_locke_admin)):
             clerk_invites = await list_clerk_pending_invitations(org["clerk_org_id"])
             pending = [
                 {
+                    "id": inv.get("id"),
                     "email": inv.get("email_address"),
                     "clerk_role": inv.get("role"),
                     "created_at": inv.get("created_at"),
@@ -491,6 +507,287 @@ async def invite_user(
         "email": payload.email,
         "role": payload.role,
     }
+
+
+@app.patch("/api/admin/orgs/{org_id}")
+async def update_org(
+    org_id: str,
+    payload: UpdateOrgRequest,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Update org name, slug, and/or status.
+
+    Status transitions cascade to memberships:
+      active     -> suspended : all active memberships -> suspended
+      suspended  -> active    : all suspended memberships -> active
+      anything   -> archived  : all non-removed memberships -> removed, archived_at set
+    """
+    async with admin_conn() as conn:
+        org = await conn.fetchrow(
+            "SELECT id, clerk_org_id, name, slug, status::text AS status, "
+            "       is_internal, archived_at "
+            "FROM organizations WHERE id = $1",
+            uuid.UUID(org_id),
+        )
+        if not org:
+            raise HTTPException(status_code=404, detail="Org not found")
+        if org["is_internal"]:
+            raise HTTPException(
+                status_code=403,
+                detail="The Locke internal organization cannot be modified through the admin API.",
+            )
+
+        old_status = org["status"]
+        new_status = payload.status or old_status
+
+        # Mirror name/slug to Clerk if they're changing.
+        if (payload.name and payload.name != org["name"]) or \
+           (payload.slug and payload.slug != org["slug"]):
+            if org["clerk_org_id"]:
+                await update_clerk_organization(
+                    clerk_org_id=org["clerk_org_id"],
+                    name=payload.name,
+                    slug=payload.slug,
+                )
+
+        # Build dynamic UPDATE for org row.
+        sets = []
+        params: list = []
+        if payload.name is not None:
+            params.append(payload.name)
+            sets.append(f"name = ${len(params)}")
+        if payload.slug is not None:
+            params.append(payload.slug)
+            sets.append(f"slug = ${len(params)}")
+        if payload.status is not None and payload.status != old_status:
+            params.append(payload.status)
+            sets.append(f"status = ${len(params)}::org_status")
+            if payload.status == "archived":
+                sets.append("archived_at = now()")
+            elif old_status == "archived":
+                sets.append("archived_at = NULL")
+        if not sets:
+            return await _serialize_org(conn, org["id"])
+
+        params.append(org["id"])
+        await conn.execute(
+            f"UPDATE organizations SET {', '.join(sets)}, updated_at = now() "
+            f"WHERE id = ${len(params)}",
+            *params,
+        )
+
+        # Cascade membership status if org status changed.
+        if payload.status and payload.status != old_status:
+            if new_status == "suspended":
+                await conn.execute(
+                    "UPDATE memberships SET status = 'suspended', updated_at = now() "
+                    "WHERE org_id = $1 AND status = 'active'",
+                    org["id"],
+                )
+            elif new_status == "active" and old_status == "suspended":
+                await conn.execute(
+                    "UPDATE memberships SET status = 'active', updated_at = now() "
+                    "WHERE org_id = $1 AND status = 'suspended'",
+                    org["id"],
+                )
+            elif new_status == "archived":
+                await conn.execute(
+                    "UPDATE memberships SET status = 'removed', updated_at = now() "
+                    "WHERE org_id = $1 AND status IN ('active', 'suspended', 'invited')",
+                    org["id"],
+                )
+
+    await _audit(
+        actor_user_id=admin["id"], action="org.updated",
+        resource_type="organization", resource_id=org["id"], org_id=org["id"],
+        metadata={
+            "fields_changed": [k for k, v in payload.model_dump().items() if v is not None],
+            "old_status": old_status, "new_status": new_status,
+        },
+    )
+
+    async with admin_conn() as conn:
+        return await _serialize_org(conn, org["id"])
+
+
+async def _serialize_org(conn, org_id) -> dict:
+    """Helper: fetch a single org row and serialize to dict."""
+    row = await conn.fetchrow(
+        "SELECT id, clerk_org_id, name, slug, status::text AS status, is_internal, "
+        "       created_at, archived_at "
+        "FROM organizations WHERE id = $1",
+        org_id,
+    )
+    return {
+        "id": str(row["id"]),
+        "clerk_org_id": row["clerk_org_id"],
+        "name": row["name"],
+        "slug": row["slug"],
+        "status": row["status"],
+        "is_internal": row["is_internal"],
+        "created_at": row["created_at"].isoformat(),
+        "archived_at": row["archived_at"].isoformat() if row["archived_at"] else None,
+    }
+
+
+@app.patch("/api/admin/orgs/{org_id}/members/{user_id}")
+async def update_member_role(
+    org_id: str,
+    user_id: str,
+    payload: UpdateMemberRoleRequest,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Change a user's role within an org. Mirrors to Clerk."""
+    async with admin_conn() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT m.id AS membership_id, m.role::text AS old_role,
+                   o.id AS org_id, o.clerk_org_id, o.is_internal,
+                   u.id AS user_id, u.clerk_user_id, u.email
+              FROM memberships m
+              JOIN organizations o ON o.id = m.org_id
+              JOIN users u ON u.id = m.user_id
+             WHERE m.org_id = $1 AND m.user_id = $2
+            """,
+            uuid.UUID(org_id), uuid.UUID(user_id),
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Membership not found")
+
+        # Sanity: don't allow downgrading the last locke_admin out of the internal org.
+        if row["is_internal"] and row["old_role"] == "locke_admin" and \
+           payload.role != "locke_admin":
+            other_admins = await conn.fetchval(
+                """
+                SELECT count(*) FROM memberships
+                 WHERE org_id = $1 AND role = 'locke_admin'
+                   AND status = 'active' AND user_id <> $2
+                """,
+                row["org_id"], row["user_id"],
+            )
+            if other_admins == 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Cannot demote the only remaining locke_admin.",
+                )
+
+        # Mirror to Clerk.
+        if row["clerk_org_id"] and row["clerk_user_id"]:
+            clerk_role = _locke_role_to_clerk_role(payload.role)
+            await update_clerk_membership_role(
+                clerk_org_id=row["clerk_org_id"],
+                clerk_user_id=row["clerk_user_id"],
+                clerk_role=clerk_role,
+            )
+
+        # Update our row.
+        await conn.execute(
+            "UPDATE memberships SET role = $1::user_role, updated_at = now() "
+            "WHERE id = $2",
+            payload.role, row["membership_id"],
+        )
+
+    await _audit(
+        actor_user_id=admin["id"], action="membership.role_changed",
+        resource_type="membership", resource_id=row["membership_id"],
+        org_id=row["org_id"],
+        metadata={"email": row["email"], "old_role": row["old_role"], "new_role": payload.role},
+    )
+
+    return {"ok": True, "role": payload.role}
+
+
+@app.delete("/api/admin/orgs/{org_id}/members/{user_id}")
+async def remove_member(
+    org_id: str,
+    user_id: str,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Remove a user from an org. Soft delete (status='removed') + Clerk removal."""
+    async with admin_conn() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT m.id AS membership_id, m.role::text AS role,
+                   o.id AS org_id, o.clerk_org_id, o.is_internal,
+                   u.id AS user_id, u.clerk_user_id, u.email
+              FROM memberships m
+              JOIN organizations o ON o.id = m.org_id
+              JOIN users u ON u.id = m.user_id
+             WHERE m.org_id = $1 AND m.user_id = $2
+            """,
+            uuid.UUID(org_id), uuid.UUID(user_id),
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Membership not found")
+
+        # Safety: don't allow removing the only locke_admin from the internal org.
+        if row["is_internal"] and row["role"] == "locke_admin":
+            other_admins = await conn.fetchval(
+                """
+                SELECT count(*) FROM memberships
+                 WHERE org_id = $1 AND role = 'locke_admin'
+                   AND status = 'active' AND user_id <> $2
+                """,
+                row["org_id"], row["user_id"],
+            )
+            if other_admins == 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Cannot remove the only remaining locke_admin.",
+                )
+
+        # Clerk removal first (so we don't leave a stale Clerk membership if our update fails).
+        if row["clerk_org_id"] and row["clerk_user_id"]:
+            await delete_clerk_membership(
+                clerk_org_id=row["clerk_org_id"],
+                clerk_user_id=row["clerk_user_id"],
+            )
+
+        await conn.execute(
+            "UPDATE memberships SET status = 'removed', updated_at = now() "
+            "WHERE id = $1",
+            row["membership_id"],
+        )
+
+    await _audit(
+        actor_user_id=admin["id"], action="membership.removed",
+        resource_type="membership", resource_id=row["membership_id"],
+        org_id=row["org_id"],
+        metadata={"email": row["email"], "role": row["role"]},
+    )
+
+    return {"ok": True}
+
+
+@app.delete("/api/admin/orgs/{org_id}/invitations/{clerk_invitation_id}")
+async def revoke_invitation(
+    org_id: str,
+    clerk_invitation_id: str,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Revoke a pending Clerk invitation."""
+    async with admin_conn() as conn:
+        org = await conn.fetchrow(
+            "SELECT id, clerk_org_id FROM organizations WHERE id = $1",
+            uuid.UUID(org_id),
+        )
+    if not org:
+        raise HTTPException(status_code=404, detail="Org not found")
+    if not org["clerk_org_id"]:
+        raise HTTPException(status_code=409, detail="Org has no Clerk link")
+
+    await revoke_clerk_invitation(
+        clerk_org_id=org["clerk_org_id"],
+        clerk_invitation_id=clerk_invitation_id,
+    )
+
+    await _audit(
+        actor_user_id=admin["id"], action="invitation.revoked",
+        resource_type="invitation", org_id=org["id"],
+        metadata={"clerk_invitation_id": clerk_invitation_id},
+    )
+
+    return {"ok": True}
 
 
 @app.post("/webhooks/clerk")

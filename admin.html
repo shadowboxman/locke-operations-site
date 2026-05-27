@@ -508,6 +508,15 @@
         <div class="page-meta" id="detailMeta"></div>
       </div>
 
+      <div class="section-row" id="orgActions" style="margin-top: 0;">
+        <div class="section-title">Org actions</div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-secondary" id="btnEditOrg">Edit</button>
+          <button class="btn-secondary" id="btnSuspendOrg">Suspend</button>
+          <button class="btn-secondary" id="btnArchiveOrg" style="color: var(--oxide); border-color: var(--oxide);">Archive</button>
+        </div>
+      </div>
+
       <div class="section-row">
         <div>
           <div class="section-title">Members</div>
@@ -546,6 +555,80 @@
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeModal('modalCreateOrg')">Cancel</button>
         <button class="btn-primary" id="btnSubmitCreateOrg">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: EDIT ORG -->
+  <div class="modal-backdrop" id="modalEditOrg">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Edit organization</div>
+        <button class="modal-close" onclick="closeModal('modalEditOrg')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="formEditOrg">
+          <div class="form-field">
+            <label class="form-label" for="editOrgName">Name <span class="req">*</span></label>
+            <input class="form-input" type="text" id="editOrgName" required maxlength="120">
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="editOrgSlug">Slug <span class="req">*</span></label>
+            <input class="form-input" type="text" id="editOrgSlug" required maxlength="60" pattern="^[a-z0-9-]+$">
+            <div class="form-help">Changing the slug updates the Clerk org too. Any external links that referenced the old slug will break.</div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalEditOrg')">Cancel</button>
+        <button class="btn-primary" id="btnSubmitEditOrg">Save changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: EDIT MEMBER ROLE -->
+  <div class="modal-backdrop" id="modalEditRole">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Change role</div>
+        <button class="modal-close" onclick="closeModal('modalEditRole')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-field">
+          <label class="form-label">User</label>
+          <div id="editRoleUserLabel" style="font-size: 14px;"></div>
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="editRoleSelect">New role</label>
+          <select class="form-select" id="editRoleSelect"></select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalEditRole')">Cancel</button>
+        <button class="btn-primary" id="btnSubmitEditRole">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIRM (reusable destructive action confirmer) -->
+  <div class="modal-backdrop" id="modalConfirm">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="confirmTitle">Confirm</div>
+        <button class="modal-close" onclick="closeModal('modalConfirm')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="confirmBody" style="font-size: 14px; line-height: 1.6;"></div>
+        <div class="form-field" id="confirmTypeField" style="margin-top: 16px; display: none;">
+          <label class="form-label" for="confirmTypeInput">
+            Type <strong id="confirmTypeExpected"></strong> to confirm
+          </label>
+          <input class="form-input" type="text" id="confirmTypeInput" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalConfirm')">Cancel</button>
+        <button class="btn-primary" id="btnSubmitConfirm" style="background: var(--oxide);">Confirm</button>
       </div>
     </div>
   </div>
@@ -622,6 +705,33 @@
       throw new Error(`${res.status}: ${body}`);
     }
     return res.json();
+  }
+
+  async function apiPatch(path, payload) {
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'PATCH',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`${res.status}: ${body}`);
+    }
+    return res.json();
+  }
+
+  async function apiDelete(path) {
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'DELETE',
+      headers: await getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`${res.status}: ${body}`);
+    }
+    // 204 No Content is valid; guard the .json()
+    const text = await res.text();
+    return text ? JSON.parse(text) : { ok: true };
   }
 
   // ===============================================================
@@ -784,6 +894,34 @@
       Created ${fmtDate(org.created_at)}
     `;
 
+    // Toggle action buttons based on org state.
+    const actionsEl = document.getElementById('orgActions');
+    if (org.is_internal) {
+      actionsEl.style.display = 'none';  // Locke internal org isn't editable here
+    } else {
+      actionsEl.style.display = 'flex';
+      const btnSuspend = document.getElementById('btnSuspendOrg');
+      const btnArchive = document.getElementById('btnArchiveOrg');
+      const btnEdit = document.getElementById('btnEditOrg');
+      // Update button labels and disable states based on org status.
+      if (org.status === 'active') {
+        btnSuspend.textContent = 'Suspend';
+        btnSuspend.disabled = false;
+        btnArchive.disabled = false;
+        btnEdit.disabled = false;
+      } else if (org.status === 'suspended') {
+        btnSuspend.textContent = 'Unsuspend';
+        btnSuspend.disabled = false;
+        btnArchive.disabled = false;
+        btnEdit.disabled = false;
+      } else if (org.status === 'archived') {
+        btnSuspend.textContent = 'Suspend';
+        btnSuspend.disabled = true;
+        btnArchive.disabled = true;
+        btnEdit.disabled = true;
+      }
+    }
+
     // Members
     const membersEl = document.getElementById('membersTableContainer');
     if (!members.length) {
@@ -793,6 +931,7 @@
           <div class="empty-sub">Click "Invite user" to add someone to this organization.</div>
         </div>`;
     } else {
+      const canActOnMembers = !org.is_internal && org.status !== 'archived';
       membersEl.innerHTML = `
         <table class="table">
           <thead>
@@ -802,6 +941,7 @@
               <th>Role</th>
               <th>Status</th>
               <th>Joined</th>
+              ${canActOnMembers ? '<th></th>' : ''}
             </tr>
           </thead>
           <tbody>
@@ -812,6 +952,13 @@
                 <td><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(m.role)}</code></td>
                 <td><span class="badge badge-${m.status === 'active' ? 'active' : 'archived'}">${m.status}</span></td>
                 <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${m.activated_at ? fmtDate(m.activated_at) : '—'}</td>
+                ${canActOnMembers && m.status === 'active' ? `
+                  <td style="text-align:right;white-space:nowrap;">
+                    <button class="btn-link" onclick='openEditRole(${JSON.stringify(m)})'>Edit role</button>
+                    &nbsp;·&nbsp;
+                    <button class="btn-link" style="color:var(--oxide);" onclick='confirmRemoveMember(${JSON.stringify(m)})'>Remove</button>
+                  </td>
+                ` : (canActOnMembers ? '<td></td>' : '')}
               </tr>
             `).join('')}
           </tbody>
@@ -827,7 +974,7 @@
       pendingEl.innerHTML = `
         <table class="table">
           <thead>
-            <tr><th>Email</th><th>Clerk role</th><th>Sent</th></tr>
+            <tr><th>Email</th><th>Clerk role</th><th>Sent</th><th></th></tr>
           </thead>
           <tbody>
             ${pending_invitations.map(p => `
@@ -835,6 +982,9 @@
                 <td>${escapeHtml(p.email || '—')}</td>
                 <td><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(p.clerk_role || '—')}</code></td>
                 <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${p.created_at ? fmtDate(new Date(p.created_at).toISOString()) : '—'}</td>
+                <td style="text-align:right;">
+                  ${p.id ? `<button class="btn-link" style="color:var(--oxide);" onclick='confirmRevokeInvitation(${JSON.stringify(p)})'>Revoke</button>` : ''}
+                </td>
               </tr>
             `).join('')}
           </tbody>
@@ -917,6 +1067,207 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Send invitation';
+    }
+  });
+
+  // ===============================================================
+  // EDIT ORG MODAL
+  // ===============================================================
+  document.getElementById('btnEditOrg').addEventListener('click', () => {
+    if (!currentOrg) return;
+    document.getElementById('editOrgName').value = currentOrg.name;
+    document.getElementById('editOrgSlug').value = currentOrg.slug;
+    openModal('modalEditOrg');
+  });
+
+  document.getElementById('btnSubmitEditOrg').addEventListener('click', async () => {
+    if (!currentOrg) return;
+    const name = document.getElementById('editOrgName').value.trim();
+    const slug = document.getElementById('editOrgSlug').value.trim();
+    if (!name || !slug) {
+      flash('Name and slug are required.', 'error');
+      return;
+    }
+    const btn = document.getElementById('btnSubmitEditOrg');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+      const payload = {};
+      if (name !== currentOrg.name) payload.name = name;
+      if (slug !== currentOrg.slug) payload.slug = slug;
+      if (Object.keys(payload).length === 0) {
+        closeModal('modalEditOrg');
+        return;
+      }
+      await apiPatch(`/api/admin/orgs/${currentOrg.id}`, payload);
+      closeModal('modalEditOrg');
+      flash(`Updated "${name}".`);
+      await viewOrg(currentOrg.id);
+    } catch (err) {
+      flash(`Failed: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save changes';
+    }
+  });
+
+  // ===============================================================
+  // SUSPEND / UNSUSPEND ORG
+  // ===============================================================
+  document.getElementById('btnSuspendOrg').addEventListener('click', () => {
+    if (!currentOrg) return;
+    const isActive = currentOrg.status === 'active';
+    const newStatus = isActive ? 'suspended' : 'active';
+    confirmDialog({
+      title: isActive ? 'Suspend organization?' : 'Reactivate organization?',
+      body: isActive
+        ? `Suspending <strong>${escapeHtml(currentOrg.name)}</strong> will mark all active memberships as suspended. Users will lose access until you reactivate the organization.`
+        : `Reactivating <strong>${escapeHtml(currentOrg.name)}</strong> will restore access for all previously-suspended members.`,
+      confirmLabel: isActive ? 'Suspend' : 'Reactivate',
+      onConfirm: async () => {
+        await apiPatch(`/api/admin/orgs/${currentOrg.id}`, { status: newStatus });
+        flash(isActive ? 'Organization suspended.' : 'Organization reactivated.');
+        await viewOrg(currentOrg.id);
+      },
+    });
+  });
+
+  // ===============================================================
+  // ARCHIVE ORG
+  // ===============================================================
+  document.getElementById('btnArchiveOrg').addEventListener('click', () => {
+    if (!currentOrg) return;
+    confirmDialog({
+      title: 'Archive organization?',
+      body: `Archiving <strong>${escapeHtml(currentOrg.name)}</strong> is reversible only via SQL. All members will be set to <code>removed</code>. The organization will no longer appear as active in lists.<br><br>To confirm, type the org slug below.`,
+      confirmLabel: 'Archive',
+      typeToConfirm: currentOrg.slug,
+      onConfirm: async () => {
+        await apiPatch(`/api/admin/orgs/${currentOrg.id}`, { status: 'archived' });
+        flash(`Archived "${currentOrg.name}".`);
+        await viewOrg(currentOrg.id);
+      },
+    });
+  });
+
+  // ===============================================================
+  // EDIT MEMBER ROLE
+  // ===============================================================
+  function openEditRole(member) {
+    document.getElementById('editRoleUserLabel').textContent =
+      `${member.email}${member.name ? ' (' + member.name + ')' : ''}`;
+    const select = document.getElementById('editRoleSelect');
+    // Show only roles appropriate to the org type.
+    const isInternal = currentOrg && currentOrg.is_internal;
+    const opts = isInternal
+      ? [['locke_admin', 'Locke admin'], ['locke_staff', 'Locke staff']]
+      : [['client_admin', 'Client admin'], ['client_member', 'Client member']];
+    select.innerHTML = opts.map(([v, l]) =>
+      `<option value="${v}" ${v === member.role ? 'selected' : ''}>${l}</option>`
+    ).join('');
+    select.dataset.userId = member.id;
+    openModal('modalEditRole');
+  }
+
+  document.getElementById('btnSubmitEditRole').addEventListener('click', async () => {
+    const select = document.getElementById('editRoleSelect');
+    const userId = select.dataset.userId;
+    const newRole = select.value;
+    const btn = document.getElementById('btnSubmitEditRole');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+      await apiPatch(`/api/admin/orgs/${currentOrg.id}/members/${userId}`,
+                     { role: newRole });
+      closeModal('modalEditRole');
+      flash('Role updated.');
+      await viewOrg(currentOrg.id);
+    } catch (err) {
+      flash(`Failed: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save';
+    }
+  });
+
+  // ===============================================================
+  // REMOVE MEMBER
+  // ===============================================================
+  function confirmRemoveMember(member) {
+    confirmDialog({
+      title: 'Remove user from organization?',
+      body: `<strong>${escapeHtml(member.email)}</strong> will lose access to this organization. Their account remains, but they'll be marked as removed from this org.`,
+      confirmLabel: 'Remove',
+      onConfirm: async () => {
+        await apiDelete(`/api/admin/orgs/${currentOrg.id}/members/${member.id}`);
+        flash(`Removed ${member.email}.`);
+        await viewOrg(currentOrg.id);
+      },
+    });
+  }
+
+  // ===============================================================
+  // REVOKE INVITATION
+  // ===============================================================
+  function confirmRevokeInvitation(inv) {
+    confirmDialog({
+      title: 'Revoke invitation?',
+      body: `The invitation sent to <strong>${escapeHtml(inv.email)}</strong> will be revoked. They won't be able to use the link in their email.`,
+      confirmLabel: 'Revoke',
+      onConfirm: async () => {
+        await apiDelete(`/api/admin/orgs/${currentOrg.id}/invitations/${inv.id}`);
+        flash('Invitation revoked.');
+        await viewOrg(currentOrg.id);
+      },
+    });
+  }
+
+  // ===============================================================
+  // CONFIRM DIALOG (reusable)
+  // ===============================================================
+  let _confirmHandler = null;
+
+  function confirmDialog({ title, body, confirmLabel, onConfirm, typeToConfirm }) {
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmBody').innerHTML = body;
+    document.getElementById('btnSubmitConfirm').textContent = confirmLabel || 'Confirm';
+
+    const typeField = document.getElementById('confirmTypeField');
+    const typeInput = document.getElementById('confirmTypeInput');
+    const typeExpected = document.getElementById('confirmTypeExpected');
+    if (typeToConfirm) {
+      typeField.style.display = 'block';
+      typeExpected.textContent = typeToConfirm;
+      typeInput.value = '';
+      typeInput.dataset.expected = typeToConfirm;
+    } else {
+      typeField.style.display = 'none';
+      typeInput.dataset.expected = '';
+    }
+
+    _confirmHandler = onConfirm;
+    openModal('modalConfirm');
+  }
+
+  document.getElementById('btnSubmitConfirm').addEventListener('click', async () => {
+    const typeInput = document.getElementById('confirmTypeInput');
+    const expected = typeInput.dataset.expected;
+    if (expected && typeInput.value.trim() !== expected) {
+      flash(`Type the exact value "${expected}" to confirm.`, 'error');
+      return;
+    }
+    const btn = document.getElementById('btnSubmitConfirm');
+    btn.disabled = true;
+    btn.textContent = 'Working...';
+    try {
+      if (_confirmHandler) await _confirmHandler();
+      closeModal('modalConfirm');
+    } catch (err) {
+      flash(`Failed: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      // label restored next open
+      _confirmHandler = null;
     }
   });
 
