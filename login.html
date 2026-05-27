@@ -292,55 +292,142 @@
       return;
     }
 
-    // Mount Clerk's SignIn component into our brand wrapper.
-    Clerk.mountSignIn(document.getElementById('clerk-signin'), {
-      // After successful auth, send the user to the portal.
+    // Clear our loading placeholder so Clerk can render into a clean container.
+    // Without this, Clerk appends below the loading div instead of replacing it.
+    const mountTarget = document.getElementById('clerk-signin');
+    mountTarget.innerHTML = '';
+
+    Clerk.mountSignIn(mountTarget, {
       fallbackRedirectUrl: window.location.origin + '/portal.html',
-      signUpUrl: undefined,  // we do not support self-serve sign-up
+      signUpUrl: undefined,
       appearance: {
+        layout: {
+          // The "Sign up" footer is a layout-level concern; hide via element override below.
+          socialButtonsVariant: 'blockButton',
+          socialButtonsPlacement: 'top',
+        },
         variables: {
-          colorPrimary: '#F25A1A',           // oxide for buttons/links
-          colorText: '#1A2332',              // navy for primary text
-          colorTextSecondary: '#A8A6A0',     // concrete for muted text
-          colorBackground: '#F4F1EA',        // bone — matches our form-side
+          colorPrimary: '#F25A1A',
+          colorText: '#1A2332',
+          colorTextSecondary: '#A8A6A0',
+          colorBackground: '#F4F1EA',
           colorInputBackground: '#FAF8F2',
           colorInputText: '#1A2332',
           colorDanger: '#F25A1A',
-          borderRadius: '0',                 // sharp corners like the rest of the UI
+          colorNeutral: '#1A2332',
+          borderRadius: '0',
           fontFamily: '"IBM Plex Sans", -apple-system, sans-serif',
-          fontFamilyButtons: '"IBM Plex Sans", sans-serif',
+          fontFamilyButtons: '"IBM Plex Mono", monospace',
           fontSize: '14px',
           spacingUnit: '1rem',
         },
         elements: {
-          // Hide the Clerk-branded card frame; we provide the wrapper.
+          // Outer card: completely flat, no shadow, no border, no padding.
+          rootBox: { width: '100%' },
           card: {
             boxShadow: 'none',
             border: 'none',
             padding: '0',
             background: 'transparent',
           },
-          rootBox: { width: '100%' },
-          headerTitle: { display: 'none' },     // we provide the h1
-          headerSubtitle: { display: 'none' },  // we provide the subtitle
-          footer: { background: 'transparent' },
+          cardBox: {
+            boxShadow: 'none',
+            border: 'none',
+            background: 'transparent',
+          },
+
+          // Hide Clerk's header (we provide h1 + subtitle in our wrapper).
+          header: { display: 'none' },
+          headerTitle: { display: 'none' },
+          headerSubtitle: { display: 'none' },
+
+          // Hide the sign-up footer entirely (clients are invite-only).
+          footer: { display: 'none' },
+          footerAction: { display: 'none' },
+          footerActionText: { display: 'none' },
+          footerActionLink: { display: 'none' },
+
+          // Internal form rows — remove the horizontal dividers between sections.
+          formFieldRow: {
+            border: 'none',
+            padding: '0',
+          },
+          form: {
+            gap: '16px',
+            border: 'none',
+          },
+
+          // Social ("Continue with Google") button.
+          socialButtonsBlockButton: {
+            borderRadius: '0',
+            border: '1px solid rgba(26, 35, 50, 0.22)',
+            padding: '12px 16px',
+            fontFamily: '"IBM Plex Sans", sans-serif',
+            fontWeight: '400',
+            textTransform: 'none',
+            letterSpacing: '0',
+            fontSize: '14px',
+          },
+
+          // The "or" divider between social and email auth.
+          dividerRow: {
+            margin: '20px 0',
+          },
+          dividerLine: {
+            backgroundColor: 'rgba(26, 35, 50, 0.10)',
+            height: '1px',
+          },
+          dividerText: {
+            fontFamily: '"IBM Plex Mono", monospace',
+            fontSize: '10px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.14em',
+            color: '#A8A6A0',
+          },
+
+          // Form field labels: mono + uppercase to match the rest of the UI.
+          formFieldLabel: {
+            fontFamily: '"IBM Plex Mono", monospace',
+            fontSize: '10px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.12em',
+            color: '#1A2332',
+            fontWeight: '500',
+          },
+          formFieldInput: {
+            borderRadius: '0',
+            border: '1px solid rgba(26, 35, 50, 0.22)',
+            padding: '10px 12px',
+            fontSize: '14px',
+            fontFamily: '"IBM Plex Sans", sans-serif',
+          },
+
+          // Primary CTA button — match the orange "Submit issue" button in the portal.
           formButtonPrimary: {
             backgroundColor: '#F25A1A',
             borderRadius: '0',
             fontFamily: '"IBM Plex Mono", monospace',
             textTransform: 'uppercase',
-            letterSpacing: '0.12em',
+            letterSpacing: '0.14em',
             fontSize: '11px',
             fontWeight: '500',
             padding: '12px 22px',
+            boxShadow: 'none',
+            '&:hover': { backgroundColor: '#1A2332' },
           },
-          formFieldInput: {
-            borderRadius: '0',
-            border: '1px solid rgba(26, 35, 50, 0.22)',
+
+          // "Last used" pill on the email input.
+          formFieldHintText: {
+            fontFamily: '"IBM Plex Mono", monospace',
+            fontSize: '10px',
+            color: '#A8A6A0',
           },
-          socialButtonsBlockButton: {
-            borderRadius: '0',
+
+          // Identity preview block (when returning user).
+          identityPreview: {
             border: '1px solid rgba(26, 35, 50, 0.22)',
+            borderRadius: '0',
+            background: '#FAF8F2',
           },
         },
       },
