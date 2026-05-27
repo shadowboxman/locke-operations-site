@@ -603,6 +603,7 @@
       <div class="portal-label">Client portal</div>
     </div>
     <div class="user-row">
+      <a class="help-link" href="admin.html" id="adminLink" style="display:none;color:var(--oxide);">↪ Admin</a>
       <a class="help-link" href="mailto:hello@lockeoperations.com">Help</a>
       <div class="user-menu" id="userMenu">
         <div class="avatar" id="avatar">CL</div>
@@ -998,6 +999,14 @@
     document.getElementById('avatar').textContent = initials;
     document.getElementById('submitEmail').textContent = email;
     document.getElementById('flashEmail').textContent = email;
+
+    // Reveal the Admin link in the topbar if this user has admin role.
+    const isLockeAdmin = (me.memberships || []).some(m =>
+      m.role === 'locke_admin' || m.role === 'locke_staff'
+    );
+    if (isLockeAdmin) {
+      document.getElementById('adminLink').style.display = 'inline-block';
+    }
 
     // Re-render issues now that we know the user's email (issues are scoped per-user).
     renderIssues();
