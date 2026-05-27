@@ -836,12 +836,11 @@
               <th>Status</th>
               <th>Members</th>
               <th>Created</th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
             ${orgs.map(o => `
-              <tr>
+              <tr style="cursor:pointer;" onclick="viewOrg('${o.id}')">
                 <td>
                   ${escapeHtml(o.name)}
                   ${o.is_internal ? '<span class="badge badge-internal" style="margin-left:8px;">Internal</span>' : ''}
@@ -850,9 +849,6 @@
                 <td><span class="badge badge-${o.status}">${o.status}</span></td>
                 <td>${o.member_count}</td>
                 <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${fmtDate(o.created_at)}</td>
-                <td style="text-align:right;">
-                  <button class="btn-link" data-org-id="${o.id}" onclick="viewOrg(this.dataset.orgId)">View →</button>
-                </td>
               </tr>
             `).join('')}
           </tbody>
