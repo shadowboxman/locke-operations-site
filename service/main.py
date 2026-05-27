@@ -298,6 +298,15 @@ def _locke_role_to_clerk_role(locke_role: str) -> str:
     return "org:admin" if locke_role in ("locke_admin", "client_admin") else "org:member"
 
 
+# Where Clerk sends users after they accept an invitation and complete signup.
+# Set via env var so dev (Vercel preview) and prod (lockeoperations.com/portal)
+# can differ without code changes.
+PORTAL_URL = os.environ.get(
+    "PORTAL_URL",
+    "https://locke-operations-site.vercel.app/portal",
+)
+
+
 async def _audit(
     actor_user_id, action: str, resource_type: str = None,
     resource_id=None, org_id=None, outcome: str = "success",
@@ -489,6 +498,7 @@ async def invite_user(
         clerk_org_id=org["clerk_org_id"],
         email=payload.email,
         clerk_role=_locke_role_to_clerk_role(payload.role),
+        redirect_url=PORTAL_URL,
     )
 
     await _audit(
