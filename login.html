@@ -211,41 +211,43 @@
     .subtitle { font-size: 14px; }
   }
 
-  /* OTP boxes: Clerk uses `input-otp` library which renders 6 decorative
-     divs (.cl-otpCodeFieldInput.cl-input) in a flex row (.cl-otpCodeFieldInputs)
-     wrapped in [data-input-otp-container].
-     Prefixing selectors with .form-wrap bumps specificity above Clerk's
-     hashed internal classes (.cl-internal-xxxxx). */
+  /* OTP boxes: Clerk uses `input-otp` library. Switching away from flex
+     distribution (which collapsed boxes to zero) to fixed-width boxes
+     centered in the row. The outer container needs explicit width:100%
+     because Clerk sizes it to content by default. */
+  .form-wrap .cl-otpCodeFieldInputContainer,
   .form-wrap [data-input-otp-container] {
+    display: block !important;
     width: 100% !important;
     max-width: 100% !important;
   }
   .form-wrap .cl-otpCodeFieldInputs {
     display: flex !important;
-    gap: 6px !important;
+    gap: 8px !important;
     width: 100% !important;
-    justify-content: space-between !important;
+    justify-content: center !important;
   }
   .form-wrap .cl-otpCodeFieldInput,
   .form-wrap [data-testid="otp-input-segment"] {
-    flex: 1 1 0 !important;
-    min-width: 0 !important;
-    width: auto !important;
-    max-width: 48px !important;
+    flex: 0 0 auto !important;
+    width: 44px !important;
     height: 48px !important;
+    min-width: 0 !important;
+    max-width: none !important;
   }
   @media (max-width: 500px) {
-    .form-wrap .cl-otpCodeFieldInputs { gap: 4px !important; }
+    .form-wrap .cl-otpCodeFieldInputs { gap: 6px !important; }
     .form-wrap .cl-otpCodeFieldInput,
     .form-wrap [data-testid="otp-input-segment"] {
-      max-width: 44px !important;
+      width: 40px !important;
       height: 44px !important;
     }
   }
   @media (max-width: 380px) {
+    .form-wrap .cl-otpCodeFieldInputs { gap: 4px !important; }
     .form-wrap .cl-otpCodeFieldInput,
     .form-wrap [data-testid="otp-input-segment"] {
-      max-width: 40px !important;
+      width: 36px !important;
       height: 40px !important;
     }
   }
