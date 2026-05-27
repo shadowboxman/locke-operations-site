@@ -489,24 +489,63 @@ async def _on_org_updated(data: dict[str, Any]) -> None:
 
 async def _on_membership_created(data: dict[str, Any]) -> None:
     clerk_org_id = data["organization"]["id"]
-    clerk_user_id = data["public_user_data"]["user_id"]
+    public_user_data = data.get("public_user_data") or {}
+    clerk_user_id = public_user_data.get("user_id")
     clerk_role = data.get("role", "org:member")  # e.g. "org:admin" or "org:member"
+
+    if not clerk_user_id:
+        log.warning("clerk.webhook.membership.skipped no clerk_user_id in payload")
+        return
 
     async with admin_conn() as conn:
         org_row = await conn.fetchrow(
             "SELECT id, is_internal FROM organizations WHERE clerk_org_id = $1",
             clerk_org_id,
         )
+        if not org_row:
+            log.warning(
+                "clerk.webhook.membership.skipped missing org clerk_org_id=%s",
+                clerk_org_id,
+            )
+            return
+
         user_id = await conn.fetchval(
             "SELECT id FROM users WHERE clerk_user_id = $1",
             clerk_user_id,
         )
-        if not org_row or not user_id:
-            log.warning(
-                "clerk.webhook.membership.skipped missing org=%s user=%s",
-                org_row, user_id,
+
+        # Race-condition fix: Clerk fires user.created and
+        # organizationMembership.created near-simultaneously when an
+        # invitation is accepted. If membership arrives first, the user row
+        # doesn't exist yet and we'd skip silently. Create the user inline
+        # from the data already in this payload so the membership lands.
+        if not user_id:
+            email = (public_user_data.get("identifier")
+                     or _primary_email(public_user_data)
+                     or "")
+            first = public_user_data.get("first_name") or ""
+            last = public_user_data.get("last_name") or ""
+            full_name = f"{first} {last}".strip() or None
+
+            if not email:
+                log.warning(
+                    "clerk.webhook.membership.skipped no email for clerk_user_id=%s",
+                    clerk_user_id,
+                )
+                return
+
+            user_id = await conn.fetchval(
+                "INSERT INTO users (clerk_user_id, email, name) "
+                "VALUES ($1, $2, $3) "
+                "ON CONFLICT (clerk_user_id) DO UPDATE SET updated_at = now() "
+                "RETURNING id",
+                clerk_user_id, email, full_name,
             )
-            return
+            log.info(
+                "clerk.webhook.user.created_inline clerk_id=%s email=%s "
+                "(race fix in membership handler)",
+                clerk_user_id, email,
+            )
 
         # Map Clerk's 2-role model back to our 4-role model based on whether
         # this is an internal Locke org or a client org.
