@@ -199,6 +199,14 @@
     .form-wrap { padding: 24px 0; }
     h1 { font-size: 28px; }
   }
+
+  /* Very narrow phones: shrink padding so Clerk's wider components fit */
+  @media (max-width: 500px) {
+    .form-side { padding: 24px 16px; }
+    .form-wrap { padding: 16px 0; }
+    h1 { font-size: 26px; }
+    .subtitle { font-size: 14px; }
+  }
 </style>
 </head>
 <body>
@@ -431,6 +439,25 @@
             border: '1px solid rgba(26, 35, 50, 0.22)',
             borderRadius: '0',
             background: '#FAF8F2',
+          },
+
+          // Verification code (OTP) input row + individual boxes.
+          // Defaults are too wide for small phone viewports.
+          otpCodeFieldInputs: {
+            gap: '6px',
+            justifyContent: 'space-between',
+            width: '100%',
+          },
+          otpCodeFieldInput: {
+            borderRadius: '0',
+            border: '1px solid rgba(26, 35, 50, 0.22)',
+            width: '100%',
+            maxWidth: '48px',
+            minWidth: '36px',
+            height: '48px',
+            fontSize: '18px',
+            fontFamily: '"IBM Plex Mono", monospace',
+            flex: '1 1 0',
           },
         },
       },
