@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Locke Operations — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #1A2332;
+    --bone: #F4F1EA;
+    --concrete: #A8A6A0;
+    --oxide: #F25A1A;
+    --hairline: rgba(26, 35, 50, 0.10);
+    --hairline-strong: rgba(26, 35, 50, 0.22);
+    --surface: #FAF8F2;
+    --topbar-h: 64px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bone);
+    color: var(--navy);
+    font-family: "IBM Plex Sans", -apple-system, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  a { color: inherit; text-decoration: none; }
+
+  /* TOP BAR */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    height: var(--topbar-h);
+    background: var(--bone);
+    border-bottom: 1px solid var(--navy);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+  }
+  .brand-row { display: flex; align-items: center; gap: 32px; }
+  .wordmark {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 16px;
+    letter-spacing: 0.06em;
+    color: var(--navy);
+  }
+  .wordmark .dot { color: var(--oxide); }
+  .portal-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--oxide);
+    padding-left: 24px;
+    border-left: 1px solid var(--hairline-strong);
+  }
+
+  .user-row { display: flex; align-items: center; gap: 16px; }
+  .help-link {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--navy);
+    padding: 6px 0;
+    border-bottom: 1px solid transparent;
+  }
+  .help-link:hover { border-bottom-color: var(--navy); }
+  .user-menu {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--hairline-strong);
+    cursor: pointer;
+  }
+  .avatar {
+    width: 26px;
+    height: 26px;
+    background: var(--navy);
+    color: var(--bone);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+  }
+  .user-email {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--navy);
+  }
+  .user-caret { color: var(--concrete); font-size: 10px; }
+  .user-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 220px;
+    background: var(--bone);
+    border: 1px solid var(--navy);
+    display: none;
+    z-index: 20;
+  }
+  .user-dropdown.open { display: block; }
+  .dropdown-section {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .dropdown-section:last-child { border-bottom: none; }
+  .dropdown-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+    margin-bottom: 4px;
+  }
+  .dropdown-value {
+    font-size: 13px;
+    color: var(--navy);
+    word-break: break-all;
+  }
+  .dropdown-item {
+    display: block;
+    width: 100%;
+    padding: 10px 14px;
+    background: none;
+    border: none;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 13px;
+    color: var(--navy);
+    text-align: left;
+    cursor: pointer;
+  }
+  .dropdown-item:hover { background: var(--surface); }
+  .dropdown-item.danger { color: var(--oxide); }
+
+  /* MAIN */
+  main {
+    padding: 32px 40px 60px;
+    max-width: 1200px;
+  }
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 1px solid var(--hairline);
+    padding-bottom: 20px;
+    margin-bottom: 28px;
+  }
+  .page-eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+    margin-bottom: 6px;
+  }
+  h1 {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 28px;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+    color: var(--navy);
+  }
+  .page-meta {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--concrete);
+  }
+
+  /* BACK LINK */
+  .breadcrumb {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--navy);
+    margin-bottom: 16px;
+    cursor: pointer;
+    border-bottom: 1px solid transparent;
+    display: inline-block;
+  }
+  .breadcrumb:hover { border-bottom-color: var(--navy); }
+
+  /* BUTTONS */
+  button.btn-primary {
+    padding: 12px 22px;
+    background: var(--oxide);
+    color: var(--bone);
+    border: none;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  button.btn-primary:hover { background: var(--navy); }
+  button.btn-primary:disabled { background: var(--concrete); cursor: not-allowed; }
+
+  button.btn-secondary {
+    padding: 10px 18px;
+    background: transparent;
+    color: var(--navy);
+    border: 1px solid var(--hairline-strong);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  button.btn-secondary:hover { border-color: var(--navy); }
+
+  button.btn-link {
+    background: none;
+    border: none;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--oxide);
+    cursor: pointer;
+    padding: 0;
+  }
+  button.btn-link:hover { color: var(--navy); }
+
+  /* TABLES */
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bone);
+    border: 1px solid var(--hairline-strong);
+  }
+  .table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--concrete);
+    background: var(--surface);
+    border-bottom: 1px solid var(--hairline-strong);
+    font-weight: 500;
+  }
+  .table td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--hairline);
+    font-size: 14px;
+    color: var(--navy);
+  }
+  .table tr:last-child td { border-bottom: none; }
+  .table tr:hover td { background: var(--surface); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+  .badge-active { background: rgba(26, 35, 50, 0.08); color: var(--navy); }
+  .badge-suspended { background: rgba(242, 90, 26, 0.12); color: var(--oxide); }
+  .badge-archived { background: rgba(168, 65, 46, 0.06); color: var(--concrete); }
+  .badge-internal { background: var(--navy); color: var(--bone); }
+
+  /* SECTION HEADER WITH ACTION */
+  .section-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    margin-top: 28px;
+  }
+  .section-row:first-child { margin-top: 0; }
+  .section-title {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--navy);
+  }
+  .section-meta {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--concrete);
+  }
+
+  /* EMPTY STATES */
+  .empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--concrete);
+    border: 1px solid var(--hairline-strong);
+    background: var(--surface);
+  }
+  .empty-title {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 500;
+    font-size: 15px;
+    color: var(--navy);
+    margin-bottom: 6px;
+  }
+  .empty-sub {
+    font-size: 13px;
+    color: var(--concrete);
+    line-height: 1.5;
+    max-width: 380px;
+    margin: 0 auto;
+  }
+
+  /* MODAL */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 35, 50, 0.55);
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    z-index: 50;
+    padding-top: 80px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--bone);
+    border: 1px solid var(--navy);
+    width: 100%;
+    max-width: 480px;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+  }
+  .modal-header {
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--hairline-strong);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .modal-title {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--navy);
+  }
+  .modal-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 14px;
+    color: var(--concrete);
+  }
+  .modal-body { padding: 22px; }
+  .modal-footer {
+    padding: 16px 22px;
+    border-top: 1px solid var(--hairline);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    background: var(--surface);
+  }
+
+  /* FORMS */
+  .form-field { display: flex; flex-direction: column; margin-bottom: 16px; }
+  .form-field:last-child { margin-bottom: 0; }
+  .form-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--navy);
+    margin-bottom: 8px;
+  }
+  .form-label .req { color: var(--oxide); }
+  .form-input, .form-select {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bone);
+    border: 1px solid var(--hairline-strong);
+    color: var(--navy);
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 14px;
+    outline: none;
+  }
+  .form-input:focus, .form-select:focus { border-color: var(--navy); }
+  .form-help {
+    font-size: 12px;
+    color: var(--concrete);
+    margin-top: 6px;
+  }
+
+  /* FLASH MESSAGES */
+  .flash {
+    background: var(--navy);
+    color: var(--bone);
+    padding: 12px 18px;
+    margin-bottom: 20px;
+    display: none;
+    font-size: 14px;
+  }
+  .flash.show { display: block; }
+  .flash.error { background: var(--oxide); }
+
+  /* LOADING */
+  .loading {
+    padding: 60px;
+    text-align: center;
+    color: var(--concrete);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }
+
+  /* VIEW SECTIONS */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  @media (max-width: 900px) {
+    main { padding: 24px 16px 40px; }
+    .table th, .table td { padding: 10px 8px; font-size: 13px; }
+  }
+</style>
+
+<script
+  async
+  crossorigin="anonymous"
+  data-clerk-publishable-key="pk_test_bGl2aW5nLWNvbHQtNTguY2xlcmsuYWNjb3VudHMuZGV2JA"
+  src="https://living-colt-58.clerk.accounts.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+  type="text/javascript"
+></script>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand-row">
+      <a href="index.html" class="wordmark">LOCKE <span class="dot">O</span>PERATIONS</a>
+      <div class="portal-label">Admin</div>
+    </div>
+    <div class="user-row">
+      <a class="help-link" href="portal.html">↩ Portal</a>
+      <div class="user-menu" id="userMenu">
+        <div class="avatar" id="avatar">--</div>
+        <div class="user-email" id="userEmail">loading...</div>
+        <div class="user-caret">▼</div>
+        <div class="user-dropdown" id="userDropdown">
+          <div class="dropdown-section">
+            <div class="dropdown-label">Signed in as</div>
+            <div class="dropdown-value" id="dropdownEmail">loading...</div>
+          </div>
+          <div class="dropdown-section">
+            <button class="dropdown-item" onclick="window.location.href='portal.html'">View as client</button>
+          </div>
+          <div class="dropdown-section">
+            <button class="dropdown-item danger" id="logoutBtn">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="flash" id="flash"></div>
+
+    <!-- LOADING STATE -->
+    <div class="loading" id="loadingState">Loading admin...</div>
+
+    <!-- VIEW: ORGS LIST -->
+    <section class="view" id="view-orgs">
+      <div class="page-header">
+        <div>
+          <div class="page-eyebrow">Admin</div>
+          <h1>Organizations</h1>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <div class="page-meta"><span id="orgsCount">0</span> total</div>
+          <button class="btn-primary" id="btnCreateOrg">Create org</button>
+        </div>
+      </div>
+
+      <div id="orgsTableContainer"></div>
+    </section>
+
+    <!-- VIEW: ORG DETAIL -->
+    <section class="view" id="view-org-detail">
+      <button class="breadcrumb" onclick="showView('orgs')">← All organizations</button>
+      <div class="page-header">
+        <div>
+          <div class="page-eyebrow"><span id="detailEyebrow">Organization</span></div>
+          <h1 id="detailName">Loading...</h1>
+        </div>
+        <div class="page-meta" id="detailMeta"></div>
+      </div>
+
+      <div class="section-row">
+        <div>
+          <div class="section-title">Members</div>
+        </div>
+        <button class="btn-primary" id="btnInvite">Invite user</button>
+      </div>
+      <div id="membersTableContainer"></div>
+
+      <div class="section-row">
+        <div class="section-title">Pending invitations</div>
+      </div>
+      <div id="pendingTableContainer"></div>
+    </section>
+  </main>
+
+  <!-- MODAL: CREATE ORG -->
+  <div class="modal-backdrop" id="modalCreateOrg">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Create organization</div>
+        <button class="modal-close" onclick="closeModal('modalCreateOrg')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="formCreateOrg">
+          <div class="form-field">
+            <label class="form-label" for="newOrgName">Name <span class="req">*</span></label>
+            <input class="form-input" type="text" id="newOrgName" required maxlength="120" placeholder="Acme Corporation">
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="newOrgSlug">Slug <span class="req">*</span></label>
+            <input class="form-input" type="text" id="newOrgSlug" required maxlength="60" pattern="^[a-z0-9-]+$" placeholder="acme-corp">
+            <div class="form-help">Lowercase letters, numbers, and hyphens only. Used in URLs and Clerk.</div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalCreateOrg')">Cancel</button>
+        <button class="btn-primary" id="btnSubmitCreateOrg">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: INVITE USER -->
+  <div class="modal-backdrop" id="modalInvite">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Invite user</div>
+        <button class="modal-close" onclick="closeModal('modalInvite')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="formInvite">
+          <div class="form-field">
+            <label class="form-label" for="inviteEmail">Email <span class="req">*</span></label>
+            <input class="form-input" type="email" id="inviteEmail" required placeholder="user@company.com">
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="inviteRole">Role</label>
+            <select class="form-select" id="inviteRole">
+              <option value="client_admin">Client admin (can manage other users in their org)</option>
+              <option value="client_member" selected>Client member (read-only)</option>
+            </select>
+          </div>
+          <div class="form-help">Clerk will email them an invitation link. They'll complete signup, then appear in the members list.</div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalInvite')">Cancel</button>
+        <button class="btn-primary" id="btnSubmitInvite">Send invitation</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ===============================================================
+  // Config
+  // ===============================================================
+  const API_BASE_URL = 'https://locke-operations-site-production.up.railway.app';
+
+  let lockeUser = null;
+  let currentOrg = null;   // populated when viewing org detail
+
+  // ===============================================================
+  // Auth helpers
+  // ===============================================================
+  async function getAuthHeaders() {
+    const token = await Clerk.session.getToken();
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+  }
+
+  async function apiGet(path) {
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      headers: await getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`${res.status}: ${body}`);
+    }
+    return res.json();
+  }
+
+  async function apiPost(path, payload) {
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`${res.status}: ${body}`);
+    }
+    return res.json();
+  }
+
+  // ===============================================================
+  // Auth guard: Clerk session + admin role check via /api/me
+  // ===============================================================
+  (async function () {
+    let attempts = 0;
+    while (!window.Clerk && attempts < 50) {
+      await new Promise(r => setTimeout(r, 100));
+      attempts++;
+    }
+    if (!window.Clerk) {
+      window.location.href = 'login.html';
+      return;
+    }
+    await Clerk.load();
+    if (!Clerk.user || !Clerk.session) {
+      window.location.href = 'login.html';
+      return;
+    }
+
+    // Fetch /api/me to determine role.
+    let me;
+    try {
+      me = await apiGet('/api/me');
+    } catch (err) {
+      console.error('Failed to load /api/me:', err);
+      flash('Portal temporarily unavailable. Try refreshing.', 'error');
+      return;
+    }
+
+    lockeUser = me.user;
+    const isAdmin = (me.memberships || []).some(m =>
+      m.role === 'locke_admin' || m.role === 'locke_staff'
+    );
+    if (!isAdmin) {
+      // Non-admin tried to reach /admin. Send them to their portal.
+      window.location.href = 'portal.html';
+      return;
+    }
+
+    // Populate topbar.
+    const email = lockeUser.email;
+    const displayName = lockeUser.name || email.split('@')[0];
+    const initials = (displayName.split(/\s+/).map(p => p[0]).join('') || 'CL')
+                       .slice(0, 2).toUpperCase();
+    document.getElementById('userEmail').textContent = email;
+    document.getElementById('dropdownEmail').textContent = email;
+    document.getElementById('avatar').textContent = initials;
+
+    // Show the first view.
+    document.getElementById('loadingState').style.display = 'none';
+    showView('orgs');
+    await loadOrgs();
+  })();
+
+  // ===============================================================
+  // View routing (orgs list vs org detail)
+  // ===============================================================
+  function showView(name) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + name).classList.add('active');
+    document.getElementById('flash').classList.remove('show');
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+
+  // ===============================================================
+  // Flash messages
+  // ===============================================================
+  function flash(msg, type) {
+    const el = document.getElementById('flash');
+    el.textContent = msg;
+    el.classList.remove('error');
+    if (type === 'error') el.classList.add('error');
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 6000);
+  }
+
+  // ===============================================================
+  // ORGS LIST
+  // ===============================================================
+  async function loadOrgs() {
+    const container = document.getElementById('orgsTableContainer');
+    container.innerHTML = '<div class="loading">Loading organizations...</div>';
+    try {
+      const { orgs } = await apiGet('/api/admin/orgs');
+      document.getElementById('orgsCount').textContent = orgs.length;
+      if (!orgs.length) {
+        container.innerHTML = `
+          <div class="empty">
+            <div class="empty-title">No organizations yet</div>
+            <div class="empty-sub">Click "Create org" to add your first client.</div>
+          </div>`;
+        return;
+      }
+      container.innerHTML = `
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Slug</th>
+              <th>Status</th>
+              <th>Members</th>
+              <th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${orgs.map(o => `
+              <tr>
+                <td>
+                  ${escapeHtml(o.name)}
+                  ${o.is_internal ? '<span class="badge badge-internal" style="margin-left:8px;">Internal</span>' : ''}
+                </td>
+                <td><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${escapeHtml(o.slug)}</code></td>
+                <td><span class="badge badge-${o.status}">${o.status}</span></td>
+                <td>${o.member_count}</td>
+                <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${fmtDate(o.created_at)}</td>
+                <td style="text-align:right;">
+                  <button class="btn-link" data-org-id="${o.id}" onclick="viewOrg(this.dataset.orgId)">View →</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+    } catch (err) {
+      container.innerHTML = `<div class="empty"><div class="empty-title">Failed to load</div><div class="empty-sub">${escapeHtml(err.message)}</div></div>`;
+    }
+  }
+
+  // ===============================================================
+  // ORG DETAIL
+  // ===============================================================
+  async function viewOrg(orgId) {
+    showView('org-detail');
+    document.getElementById('detailName').textContent = 'Loading...';
+    document.getElementById('membersTableContainer').innerHTML = '<div class="loading">Loading...</div>';
+    document.getElementById('pendingTableContainer').innerHTML = '';
+    try {
+      const data = await apiGet(`/api/admin/orgs/${orgId}`);
+      currentOrg = data.org;
+      renderOrgDetail(data);
+    } catch (err) {
+      document.getElementById('detailName').textContent = 'Failed to load';
+      document.getElementById('membersTableContainer').innerHTML =
+        `<div class="empty"><div class="empty-sub">${escapeHtml(err.message)}</div></div>`;
+    }
+  }
+
+  function renderOrgDetail(data) {
+    const { org, members, pending_invitations } = data;
+    document.getElementById('detailEyebrow').textContent =
+      org.is_internal ? 'Internal organization' : 'Client organization';
+    document.getElementById('detailName').textContent = org.name;
+    document.getElementById('detailMeta').innerHTML = `
+      <span class="badge badge-${org.status}">${org.status}</span>
+      &nbsp;·&nbsp;
+      <code>${escapeHtml(org.slug)}</code>
+      &nbsp;·&nbsp;
+      Created ${fmtDate(org.created_at)}
+    `;
+
+    // Members
+    const membersEl = document.getElementById('membersTableContainer');
+    if (!members.length) {
+      membersEl.innerHTML = `
+        <div class="empty">
+          <div class="empty-title">No members yet</div>
+          <div class="empty-sub">Click "Invite user" to add someone to this organization.</div>
+        </div>`;
+    } else {
+      membersEl.innerHTML = `
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Joined</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${members.map(m => `
+              <tr>
+                <td>${escapeHtml(m.email)}</td>
+                <td>${escapeHtml(m.name || '—')}</td>
+                <td><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(m.role)}</code></td>
+                <td><span class="badge badge-${m.status === 'active' ? 'active' : 'archived'}">${m.status}</span></td>
+                <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${m.activated_at ? fmtDate(m.activated_at) : '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    // Pending invitations
+    const pendingEl = document.getElementById('pendingTableContainer');
+    if (!pending_invitations.length) {
+      pendingEl.innerHTML = `
+        <div class="empty"><div class="empty-sub">No pending invitations.</div></div>`;
+    } else {
+      pendingEl.innerHTML = `
+        <table class="table">
+          <thead>
+            <tr><th>Email</th><th>Clerk role</th><th>Sent</th></tr>
+          </thead>
+          <tbody>
+            ${pending_invitations.map(p => `
+              <tr>
+                <td>${escapeHtml(p.email || '—')}</td>
+                <td><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(p.clerk_role || '—')}</code></td>
+                <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${p.created_at ? fmtDate(new Date(p.created_at).toISOString()) : '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+    }
+  }
+
+  // ===============================================================
+  // CREATE ORG MODAL
+  // ===============================================================
+  document.getElementById('btnCreateOrg').addEventListener('click', () => {
+    document.getElementById('newOrgName').value = '';
+    document.getElementById('newOrgSlug').value = '';
+    openModal('modalCreateOrg');
+  });
+
+  // Auto-derive slug from name as user types
+  document.getElementById('newOrgName').addEventListener('input', (e) => {
+    const slugInput = document.getElementById('newOrgSlug');
+    // Only auto-fill if user hasn't manually edited the slug.
+    if (!slugInput.dataset.touched) {
+      slugInput.value = slugify(e.target.value);
+    }
+  });
+  document.getElementById('newOrgSlug').addEventListener('input', (e) => {
+    e.target.dataset.touched = '1';
+  });
+
+  document.getElementById('btnSubmitCreateOrg').addEventListener('click', async () => {
+    const name = document.getElementById('newOrgName').value.trim();
+    const slug = document.getElementById('newOrgSlug').value.trim();
+    if (!name || !slug) {
+      flash('Name and slug are required.', 'error');
+      return;
+    }
+    const btn = document.getElementById('btnSubmitCreateOrg');
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+    try {
+      const org = await apiPost('/api/admin/orgs', { name, slug });
+      closeModal('modalCreateOrg');
+      flash(`Created "${org.name}".`);
+      await loadOrgs();
+    } catch (err) {
+      flash(`Failed: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create';
+    }
+  });
+
+  // ===============================================================
+  // INVITE USER MODAL
+  // ===============================================================
+  document.getElementById('btnInvite').addEventListener('click', () => {
+    document.getElementById('inviteEmail').value = '';
+    document.getElementById('inviteRole').value = 'client_member';
+    openModal('modalInvite');
+  });
+
+  document.getElementById('btnSubmitInvite').addEventListener('click', async () => {
+    if (!currentOrg) return;
+    const email = document.getElementById('inviteEmail').value.trim();
+    const role = document.getElementById('inviteRole').value;
+    if (!email) {
+      flash('Email is required.', 'error');
+      return;
+    }
+    const btn = document.getElementById('btnSubmitInvite');
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    try {
+      await apiPost(`/api/admin/orgs/${currentOrg.id}/invitations`, { email, role });
+      closeModal('modalInvite');
+      flash(`Invitation sent to ${email}.`);
+      // Reload detail to show the new pending invitation
+      await viewOrg(currentOrg.id);
+    } catch (err) {
+      flash(`Failed: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Send invitation';
+    }
+  });
+
+  // ===============================================================
+  // MODAL helpers
+  // ===============================================================
+  function openModal(id) { document.getElementById(id).classList.add('open'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+  document.querySelectorAll('.modal-backdrop').forEach(bd => {
+    bd.addEventListener('click', (e) => {
+      if (e.target === bd) bd.classList.remove('open');
+    });
+  });
+
+  // ===============================================================
+  // User dropdown + logout
+  // ===============================================================
+  const userMenu = document.getElementById('userMenu');
+  const dropdown = document.getElementById('userDropdown');
+  userMenu.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dropdown.classList.toggle('open');
+  });
+  document.addEventListener('click', () => dropdown.classList.remove('open'));
+  dropdown.addEventListener('click', (e) => e.stopPropagation());
+
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    if (window.Clerk && Clerk.loaded) await Clerk.signOut();
+    window.location.href = 'index.html';
+  });
+
+  // ===============================================================
+  // Utils
+  // ===============================================================
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+  function slugify(s) {
+    return s.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60);
+  }
+</script>
+</body>
+</html>
