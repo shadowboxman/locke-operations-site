@@ -10,6 +10,10 @@
 *.swo
 *~
 
+# Backups from in-place sed / awk / similar
+*.bak
+*.orig
+
 # OneDrive sync conflicts
 *conflict*
 
@@ -28,6 +32,10 @@ venv/
 .env.local
 .env.*.local
 service/.env
+
+# Supabase CLI local cache (project-config commits via supabase/config.toml)
+**/supabase/.temp/
+**/supabase/.branches/
 
 # Local lead JSON files used by manual playbook 06
 lead-*.json
