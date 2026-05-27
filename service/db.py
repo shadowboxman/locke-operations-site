@@ -14,6 +14,7 @@ Connection pool lifecycle is managed via FastAPI lifespan (see main.py).
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -48,8 +49,27 @@ async def init_pool() -> None:
         max_size=10,
         command_timeout=30,
         statement_cache_size=0 if use_pooler else 100,
+        init=_init_connection,
     )
     log.info("db.pool.created use_pooler=%s", use_pooler)
+
+
+async def _init_connection(conn: asyncpg.Connection) -> None:
+    """Per-connection setup. Registers a JSON codec for jsonb columns so we
+    can pass Python dicts directly to INSERT/UPDATE without manual json.dumps.
+    """
+    await conn.set_type_codec(
+        "jsonb",
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema="pg_catalog",
+    )
+    await conn.set_type_codec(
+        "json",
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema="pg_catalog",
+    )
 
 
 async def close_pool() -> None:
