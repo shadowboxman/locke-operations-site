@@ -211,21 +211,27 @@
     .subtitle { font-size: 14px; }
   }
 
-  /* OTP boxes: Clerk uses `input-otp` library. Switching away from flex
-     distribution (which collapsed boxes to zero) to fixed-width boxes
-     centered in the row. The outer container needs explicit width:100%
-     because Clerk sizes it to content by default. */
+  /* OTP boxes: Clerk uses `input-otp` library. Fixed-width boxes centered
+     in the row. The outer container needs explicit width:100% because
+     Clerk sizes it to content by default. Also override --root-height
+     (Clerk's internal CSS variable that controls row height) so it
+     matches our box height and doesn't clip the top. */
   .form-wrap .cl-otpCodeFieldInputContainer,
   .form-wrap [data-input-otp-container] {
     display: block !important;
     width: 100% !important;
     max-width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    --root-height: 48px;
   }
   .form-wrap .cl-otpCodeFieldInputs {
     display: flex !important;
     gap: 8px !important;
     width: 100% !important;
     justify-content: center !important;
+    overflow: visible !important;
+    height: auto !important;
   }
   .form-wrap .cl-otpCodeFieldInput,
   .form-wrap [data-testid="otp-input-segment"] {
@@ -234,9 +240,12 @@
     height: 48px !important;
     min-width: 0 !important;
     max-width: none !important;
+    box-sizing: border-box !important;
   }
   @media (max-width: 500px) {
     .form-wrap .cl-otpCodeFieldInputs { gap: 6px !important; }
+    .form-wrap .cl-otpCodeFieldInputContainer,
+    .form-wrap [data-input-otp-container] { --root-height: 44px; }
     .form-wrap .cl-otpCodeFieldInput,
     .form-wrap [data-testid="otp-input-segment"] {
       width: 40px !important;
@@ -245,6 +254,8 @@
   }
   @media (max-width: 380px) {
     .form-wrap .cl-otpCodeFieldInputs { gap: 4px !important; }
+    .form-wrap .cl-otpCodeFieldInputContainer,
+    .form-wrap [data-input-otp-container] { --root-height: 40px; }
     .form-wrap .cl-otpCodeFieldInput,
     .form-wrap [data-testid="otp-input-segment"] {
       width: 36px !important;
