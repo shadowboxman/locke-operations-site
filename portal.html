@@ -584,6 +584,15 @@
     main { padding: 24px 16px 40px; }
   }
 </style>
+
+<!-- Clerk JS SDK (Phase 1: vanilla JS, no bundler) -->
+<script
+  async
+  crossorigin="anonymous"
+  data-clerk-publishable-key="pk_test_bGl2aW5nLWNvbHQtNTguY2xlcmsuYWNjb3VudHMuZGV2JA"
+  src="https://living-colt-58.clerk.accounts.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+  type="text/javascript"
+></script>
 </head>
 <body>
 
@@ -913,24 +922,85 @@
   </div>
 
 <script>
-  // === Auth guard ===
-  (function () {
-    if (!localStorage.getItem('locke_authed')) {
+  // === Config ===
+  const API_BASE_URL = 'https://locke-operations-site-production.up.railway.app';
+
+  // Globals populated after Clerk loads + /api/me responds.
+  // Other code paths (issues form, dropdown) read these.
+  let lockeUser = null;     // { id, email, name, clerk_user_id }
+  let lockePrimary = null;  // { role, status, org: { id, name, slug, is_internal } }
+
+  // === Auth guard (Clerk + /api/me) ===
+  (async function () {
+    // Wait for Clerk to load (the async script tag means it may not be ready
+    // when this IIFE runs).
+    let attempts = 0;
+    while (!window.Clerk && attempts < 50) {
+      await new Promise(r => setTimeout(r, 100));
+      attempts++;
+    }
+    if (!window.Clerk) {
       window.location.href = 'login.html';
       return;
     }
-    const email = localStorage.getItem('locke_user_email') || 'client@company.com';
-    const initials = (email.split('@')[0] || 'CL').slice(0, 2).toUpperCase();
-    const accountLabel = (email.split('@')[1] || 'your-company.com').split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+    await Clerk.load();
+
+    // No session → bounce to login.
+    if (!Clerk.user || !Clerk.session) {
+      window.location.href = 'login.html';
+      return;
+    }
+
+    // Fetch /api/me with the Clerk session token.
+    let me;
+    try {
+      const token = await Clerk.session.getToken();
+      const res = await fetch(`${API_BASE_URL}/api/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401) {
+        // Provisioning gap: account exists in Clerk but not in Locke DB.
+        document.body.innerHTML =
+          '<div style="padding:60px;text-align:center;font-family:IBM Plex Sans,sans-serif;color:#1A2332;">' +
+          '<h1 style="font-weight:600;font-size:22px;margin-bottom:12px;">Your account isn\'t provisioned</h1>' +
+          '<p style="color:#A8A6A0;">Contact <a href="mailto:hello@lockeoperations.com" style="color:#1A2332;">hello@lockeoperations.com</a>.</p>' +
+          '</div>';
+        return;
+      }
+      if (!res.ok) throw new Error(`/api/me returned ${res.status}`);
+      me = await res.json();
+    } catch (err) {
+      console.error('Failed to load /api/me:', err);
+      document.body.innerHTML =
+        '<div style="padding:60px;text-align:center;font-family:IBM Plex Sans,sans-serif;color:#1A2332;">' +
+        '<h1 style="font-weight:600;font-size:22px;margin-bottom:12px;">Portal temporarily unavailable</h1>' +
+        '<p style="color:#A8A6A0;">Try refreshing in a moment. If this persists, email hello@lockeoperations.com.</p>' +
+        '</div>';
+      return;
+    }
+
+    lockeUser = me.user;
+    lockePrimary = me.primary;
+
+    // Populate topbar + profile pane.
+    const email = lockeUser.email;
+    const displayName = lockeUser.name || email.split('@')[0];
+    const initials = (displayName.split(/\s+/).map(p => p[0]).join('') || 'CL')
+                       .slice(0, 2).toUpperCase();
+    const orgLabel = lockePrimary ? lockePrimary.org.name : 'No organization';
 
     document.getElementById('userEmail').textContent = email;
     document.getElementById('dropdownEmail').textContent = email;
     document.getElementById('profileEmail').textContent = email;
-    document.getElementById('accountLabel').textContent = accountLabel;
-    document.getElementById('profileAccount').textContent = accountLabel;
+    document.getElementById('accountLabel').textContent = orgLabel;
+    document.getElementById('profileAccount').textContent = orgLabel;
     document.getElementById('avatar').textContent = initials;
     document.getElementById('submitEmail').textContent = email;
     document.getElementById('flashEmail').textContent = email;
+
+    // Re-render issues now that we know the user's email (issues are scoped per-user).
+    renderIssues();
   })();
 
   // === Section navigation ===
@@ -959,28 +1029,28 @@
   dropdown.addEventListener('click', (e) => e.stopPropagation());
 
   // === Logout ===
-  document.getElementById('logoutBtn').addEventListener('click', () => {
-    localStorage.removeItem('locke_authed');
-    localStorage.removeItem('locke_user_email');
-    localStorage.removeItem('locke_remember');
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    if (window.Clerk && Clerk.loaded) {
+      await Clerk.signOut();
+    }
     window.location.href = 'index.html';
   });
 
   // === Issues (mock submission, persisted to localStorage per user) ===
-  // In production this hits a backend that emails Locke and creates a ticket.
-  // For Phase 0 the data stays in the browser. Locke can paste submissions
-  // received by another channel (form service, email) into the customer's
-  // portal manually until the backend is wired up.
-  const email = localStorage.getItem('locke_user_email') || 'client@company.com';
-  const issuesKey = 'locke_issues_' + email;
+  // Phase 1: stays in browser. Phase 5 will move to /api/issues with backend
+  // persistence + email notifications. Until then this is a UI smoke test.
+  function issuesKey() {
+    const email = lockeUser ? lockeUser.email : 'unknown';
+    return 'locke_issues_' + email;
+  }
 
   function loadIssues() {
     try {
-      return JSON.parse(localStorage.getItem(issuesKey) || '[]');
+      return JSON.parse(localStorage.getItem(issuesKey()) || '[]');
     } catch (e) { return []; }
   }
   function saveIssues(arr) {
-    localStorage.setItem(issuesKey, JSON.stringify(arr));
+    localStorage.setItem(issuesKey(), JSON.stringify(arr));
   }
   function fmtDate(ts) {
     const d = new Date(ts);
@@ -1092,6 +1162,9 @@
     setTimeout(() => flash.classList.remove('show'), 6000);
   });
 
+  // Initial render uses empty issues (lockeUser isn't loaded yet). The auth
+  // guard calls renderIssues() again once /api/me returns, which gives us
+  // the per-user storage key.
   renderIssues();
 </script>
 </body>
