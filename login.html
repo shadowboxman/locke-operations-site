@@ -295,11 +295,19 @@
       return;
     }
 
-    await Clerk.load();
+    await Clerk.load({
+      // Code-side configuration of routing URLs. Replaces the deprecated
+      // Component Paths setting in the Clerk dashboard.
+      signInUrl: window.location.origin + '/login',
+      signUpUrl: window.location.origin + '/signup',
+      signInFallbackRedirectUrl: window.location.origin + '/portal',
+      signUpFallbackRedirectUrl: window.location.origin + '/portal',
+      afterSignOutUrl: window.location.origin + '/',
+    });
 
     // Already signed in → go to portal.
     if (Clerk.user) {
-      window.location.href = '/portal.html';
+      window.location.href = '/portal';
       return;
     }
 

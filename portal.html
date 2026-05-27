@@ -961,7 +961,15 @@
       return;
     }
 
-    await Clerk.load();
+    await Clerk.load({
+      // Code-side routing config; replaces the deprecated dashboard
+      // Component Paths setting.
+      signInUrl: window.location.origin + '/login',
+      signUpUrl: window.location.origin + '/signup',
+      signInFallbackRedirectUrl: window.location.origin + '/portal',
+      signUpFallbackRedirectUrl: window.location.origin + '/portal',
+      afterSignOutUrl: window.location.origin + '/',
+    });
 
     // No session → bounce to login.
     if (!Clerk.user || !Clerk.session) {
