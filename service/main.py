@@ -30,11 +30,15 @@ logging.basicConfig(
 )
 log = logging.getLogger("locke.submit")
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from contextlib import asynccontextmanager
+
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 import hubspot_client
+from clerk import get_current_user, handle_webhook_event, verify_webhook
+from db import close_pool, init_pool, user_conn
 from email_client import send_assessment_email
 from pdf_generator import calculate, fmt_money, generate_pdf, pdf_filename
 
@@ -44,7 +48,7 @@ from pdf_generator import calculate, fmt_money, generate_pdf, pdf_filename
 # ---------------------------------------------------------------
 _origins = os.environ.get(
     "ALLOWED_ORIGINS",
-    "https://www.lockeoperations.com,https://lockeoperations.com",
+    "https://www.lockeoperations.com,https://lockeoperations.com,https://portal.lockeoperations.com",
 ).split(",")
 ALLOWED_ORIGINS = [o.strip() for o in _origins if o.strip()]
 # Allow any *.vercel.app preview URL for the locke-operations-site project.
@@ -54,14 +58,30 @@ ALLOWED_ORIGIN_REGEX = os.environ.get(
     r"^https://locke-operations-site(-[a-z0-9-]+)?\.vercel\.app$",
 )
 
-app = FastAPI(title="Locke Operations Assessment Service", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Portal endpoints need a Postgres pool. Assessment-only deployments
+    # can run without DATABASE_URL; init_pool will raise loudly if missing.
+    if os.environ.get("DATABASE_URL"):
+        await init_pool()
+    else:
+        log.warning("startup.no_database_url portal endpoints will 500")
+    yield
+    await close_pool()
+
+
+app = FastAPI(
+    title="Locke Operations Service",
+    version="1.1.0",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_methods=["POST", "GET", "OPTIONS"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
     max_age=86400,
 )
 
@@ -174,3 +194,88 @@ async def submit(payload: SubmitPayload, background: BackgroundTasks, request: R
         "submission_id": submission_id,
         "message": "Submission received. Your full report will arrive by email shortly.",
     }
+
+
+# ===============================================================
+# Phase 1 portal endpoints
+# ===============================================================
+
+@app.get("/api/me")
+async def me(user: dict = Depends(get_current_user)):
+    """Return the current user's identity, orgs, and per-org role.
+
+    Uses user_conn so RLS applies: the user can only see orgs they belong
+    to (Locke staff see all). Frontend uses this for the topbar avatar,
+    the org switcher, and routing logic.
+    """
+    user_id = user["id"]
+    async with user_conn(user_id) as conn:
+        memberships = await conn.fetch(
+            """
+            SELECT m.role::text AS role,
+                   m.status::text AS status,
+                   o.id AS org_id,
+                   o.name AS org_name,
+                   o.slug AS org_slug,
+                   o.is_internal AS org_is_internal
+              FROM memberships m
+              JOIN organizations o ON o.id = m.org_id
+             WHERE m.user_id = $1
+               AND m.status = 'active'
+             ORDER BY o.is_internal DESC, o.name ASC
+            """,
+            user_id,
+        )
+
+    rows = [dict(r) for r in memberships]
+    primary = rows[0] if rows else None
+
+    return {
+        "user": {
+            "id": str(user["id"]),
+            "email": user["email"],
+            "name": user["name"],
+            "clerk_user_id": user["clerk_user_id"],
+        },
+        "primary": _serialize_membership(primary) if primary else None,
+        "memberships": [_serialize_membership(r) for r in rows],
+    }
+
+
+def _serialize_membership(row: dict) -> dict:
+    return {
+        "role": row["role"],
+        "status": row["status"],
+        "org": {
+            "id": str(row["org_id"]),
+            "name": row["org_name"],
+            "slug": row["org_slug"],
+            "is_internal": row["org_is_internal"],
+        },
+    }
+
+
+@app.post("/webhooks/clerk")
+async def clerk_webhook(request: Request):
+    """Receive Clerk events and sync them into Supabase.
+
+    The endpoint is unauthenticated at the HTTP layer; svix signature
+    verification is the auth. Returns 200 even on handler errors (with
+    the error logged) so Clerk doesn't retry forever on a bad event.
+    """
+    body = await request.body()
+    # svix expects these specific header names
+    headers = {
+        "svix-id": request.headers.get("svix-id", ""),
+        "svix-timestamp": request.headers.get("svix-timestamp", ""),
+        "svix-signature": request.headers.get("svix-signature", ""),
+    }
+    event = verify_webhook(headers, body)
+    try:
+        await handle_webhook_event(event)
+    except Exception as exc:
+        # Log loudly, but acknowledge so Clerk doesn't retry indefinitely.
+        # Real failures should surface via Sentry once it's wired in Phase 4.
+        log.exception("clerk.webhook.handler_failed type=%s err=%s",
+                      event.get("type"), exc)
+    return {"ok": True}
