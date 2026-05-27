@@ -194,6 +194,42 @@
     h1 { font-size: 26px; }
     .subtitle { font-size: 14px; }
   }
+
+  /* OTP boxes: same fix as login.html. Prefix selectors with .form-wrap
+     to bump specificity above Clerk's hashed internal classes. */
+  .form-wrap [data-input-otp-container] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .form-wrap .cl-otpCodeFieldInputs {
+    display: flex !important;
+    gap: 6px !important;
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+  .form-wrap .cl-otpCodeFieldInput,
+  .form-wrap [data-testid="otp-input-segment"] {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    width: auto !important;
+    max-width: 48px !important;
+    height: 48px !important;
+  }
+  @media (max-width: 500px) {
+    .form-wrap .cl-otpCodeFieldInputs { gap: 4px !important; }
+    .form-wrap .cl-otpCodeFieldInput,
+    .form-wrap [data-testid="otp-input-segment"] {
+      max-width: 44px !important;
+      height: 44px !important;
+    }
+  }
+  @media (max-width: 380px) {
+    .form-wrap .cl-otpCodeFieldInput,
+    .form-wrap [data-testid="otp-input-segment"] {
+      max-width: 40px !important;
+      height: 40px !important;
+    }
+  }
 </style>
 </head>
 <body>
