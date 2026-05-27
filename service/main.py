@@ -124,7 +124,7 @@ class SubmitPayload(BaseModel):
 # ---------------------------------------------------------------
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "service": "locke-assessment", "version": app.version}
+    return {"ok": True, "service": "locke-api", "version": app.version}
 
 
 # ---------------------------------------------------------------
