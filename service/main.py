@@ -791,6 +791,9 @@ async def update_member_role(
         if not row:
             raise HTTPException(status_code=404, detail="Membership not found")
 
+        # Locke staff are managed only from the admin surface, not a client org.
+        await _guard_locke_staff_managed_internally(conn, row)
+
         # Sanity: don't allow downgrading the last locke_admin out of the internal org.
         if row["is_internal"] and row["old_role"] == "locke_admin" and \
            payload.role != "locke_admin":
@@ -888,6 +891,32 @@ def _guard_not_self(admin: dict, row: dict[str, Any]) -> None:
         )
 
 
+async def _guard_locke_staff_managed_internally(conn, row: dict[str, Any]) -> None:
+    """Locke staff/admins may only be managed from the internal Locke org (the
+    admin surface), never through a client-org membership. Blocks suspend /
+    delete / role-change of a user who holds any active locke_admin or
+    locke_staff role when the action is taken in a client-org context.
+    """
+    if row["is_internal"]:
+        return  # the internal Locke org IS the admin surface; allow
+    is_staff = await conn.fetchval(
+        """
+        SELECT EXISTS (
+          SELECT 1 FROM memberships
+           WHERE user_id = $1
+             AND role IN ('locke_admin', 'locke_staff')
+             AND status = 'active'
+        )
+        """,
+        row["user_id"],
+    )
+    if is_staff:
+        raise HTTPException(
+            status_code=409,
+            detail="This user is Locke staff and can only be managed from the admin area, not a client organization.",
+        )
+
+
 @app.post("/api/admin/orgs/{org_id}/members/{user_id}/suspend")
 async def suspend_member(
     org_id: str,
@@ -899,6 +928,7 @@ async def suspend_member(
         row = await _load_member_for_admin_action(conn, org_id, user_id)
         await _guard_last_locke_admin(conn, row)
         _guard_not_self(admin, row)
+        await _guard_locke_staff_managed_internally(conn, row)
 
         if row["clerk_user_id"]:
             await lock_clerk_user(row["clerk_user_id"])
@@ -965,6 +995,7 @@ async def delete_member(
         row = await _load_member_for_admin_action(conn, org_id, user_id)
         await _guard_last_locke_admin(conn, row)
         _guard_not_self(admin, row)
+        await _guard_locke_staff_managed_internally(conn, row)
 
         # Capture audit fields before the row is gone.
         deleted_email = row["email"]
