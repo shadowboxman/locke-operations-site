@@ -365,6 +365,52 @@ async def delete_clerk_membership(clerk_org_id: str, clerk_user_id: str) -> None
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
 
 
+async def lock_clerk_user(clerk_user_id: str) -> None:
+    """Lock a Clerk user. Locked users cannot sign in until unlocked.
+
+    Reversible suspend. Idempotent: re-locking an already-locked user is a no-op.
+    """
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            f"{CLERK_API_BASE}/users/{clerk_user_id}/lock",
+            headers=_clerk_headers(),
+        )
+    if resp.status_code >= 400 and resp.status_code != 404:
+        log.warning("clerk.api.lock_user_failed status=%d body=%s",
+                    resp.status_code, resp.text)
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+
+async def unlock_clerk_user(clerk_user_id: str) -> None:
+    """Unlock a previously-locked Clerk user."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            f"{CLERK_API_BASE}/users/{clerk_user_id}/unlock",
+            headers=_clerk_headers(),
+        )
+    if resp.status_code >= 400 and resp.status_code != 404:
+        log.warning("clerk.api.unlock_user_failed status=%d body=%s",
+                    resp.status_code, resp.text)
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+
+async def delete_clerk_user(clerk_user_id: str) -> None:
+    """Permanently delete a Clerk user.
+
+    This frees the email so the same address can be re-invited and creates a
+    fresh Clerk identity. 404 is treated as success (already gone).
+    """
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.delete(
+            f"{CLERK_API_BASE}/users/{clerk_user_id}",
+            headers=_clerk_headers(),
+        )
+    if resp.status_code >= 400 and resp.status_code != 404:
+        log.warning("clerk.api.delete_user_failed status=%d body=%s",
+                    resp.status_code, resp.text)
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+
 async def revoke_clerk_invitation(
     clerk_org_id: str, clerk_invitation_id: str,
 ) -> dict[str, Any]:

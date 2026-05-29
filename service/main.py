@@ -15,7 +15,7 @@ import logging
 import os
 import sys
 import uuid
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from dotenv import load_dotenv
 
@@ -41,12 +41,15 @@ from clerk import (
     create_clerk_invitation,
     create_clerk_organization,
     delete_clerk_membership,
+    delete_clerk_user,
     get_current_user,
     handle_webhook_event,
     list_clerk_organization_members,
     list_clerk_pending_invitations,
+    lock_clerk_user,
     require_locke_admin,
     revoke_clerk_invitation,
+    unlock_clerk_user,
     update_clerk_membership_role,
     update_clerk_organization,
     verify_webhook,
@@ -426,7 +429,7 @@ async def get_org(org_id: str, admin: dict = Depends(require_locke_admin)):
 
         members = await conn.fetch(
             """
-            SELECT u.id, u.email, u.name, u.clerk_user_id,
+            SELECT u.id, u.email, u.name, u.clerk_user_id, u.locked_at,
                    m.role::text AS role, m.status::text AS membership_status,
                    m.activated_at
               FROM memberships m
@@ -474,6 +477,7 @@ async def get_org(org_id: str, admin: dict = Depends(require_locke_admin)):
                 "role": m["role"],
                 "status": m["membership_status"],
                 "activated_at": m["activated_at"].isoformat() if m["activated_at"] else None,
+                "locked_at": m["locked_at"].isoformat() if m["locked_at"] else None,
             }
             for m in members
         ],
@@ -488,16 +492,40 @@ async def invite_user(
     admin: dict = Depends(require_locke_admin),
 ):
     """Invite a user to an org. Clerk sends the email; webhook handles
-    membership creation on acceptance."""
+    membership creation on acceptance.
+
+    One-user-one-org invariant is enforced here: an email tied to any
+    existing user row is rejected, regardless of which org. Hard-deleted
+    users (users row gone) re-invite cleanly with no extra handling.
+    """
     async with admin_conn() as conn:
         org = await conn.fetchrow(
             "SELECT id, clerk_org_id, name FROM organizations WHERE id = $1",
             uuid.UUID(org_id),
         )
-    if not org:
-        raise HTTPException(status_code=404, detail="Org not found")
-    if not org["clerk_org_id"]:
-        raise HTTPException(status_code=409, detail="Org has no Clerk link")
+        if not org:
+            raise HTTPException(status_code=404, detail="Org not found")
+        if not org["clerk_org_id"]:
+            raise HTTPException(status_code=409, detail="Org has no Clerk link")
+
+        existing = await conn.fetchrow(
+            """
+            SELECT u.id, u.email, u.locked_at, o.name AS org_name
+              FROM users u
+              LEFT JOIN memberships m ON m.user_id = u.id AND m.status = 'active'
+              LEFT JOIN organizations o ON o.id = m.org_id
+             WHERE u.email = $1
+             LIMIT 1
+            """,
+            payload.email,
+        )
+        if existing:
+            org_label = existing["org_name"] or "another organization"
+            detail = (
+                f"{payload.email} is already on the platform "
+                f"(member of {org_label}). Hard-delete that user first to re-invite."
+            )
+            raise HTTPException(status_code=409, detail=detail)
 
     clerk_invite = await create_clerk_invitation(
         clerk_org_id=org["clerk_org_id"],
@@ -712,63 +740,144 @@ async def update_member_role(
     return {"ok": True, "role": payload.role}
 
 
-@app.delete("/api/admin/orgs/{org_id}/members/{user_id}")
-async def remove_member(
+async def _load_member_for_admin_action(
+    conn, org_id: str, user_id: str,
+) -> dict[str, Any]:
+    """Shared loader for member admin actions (suspend/unsuspend/delete).
+
+    Returns membership + org + user fields, or raises 404.
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT m.id AS membership_id, m.role::text AS role, m.status::text AS status,
+               o.id AS org_id, o.clerk_org_id, o.is_internal,
+               u.id AS user_id, u.clerk_user_id, u.email, u.locked_at
+          FROM memberships m
+          JOIN organizations o ON o.id = m.org_id
+          JOIN users u ON u.id = m.user_id
+         WHERE m.org_id = $1 AND m.user_id = $2
+        """,
+        uuid.UUID(org_id), uuid.UUID(user_id),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Membership not found")
+    return row
+
+
+async def _guard_last_locke_admin(conn, row: dict[str, Any]) -> None:
+    """Block the action if it would leave the internal org with no locke_admin."""
+    if row["is_internal"] and row["role"] == "locke_admin":
+        other_admins = await conn.fetchval(
+            """
+            SELECT count(*) FROM memberships
+             WHERE org_id = $1 AND role = 'locke_admin'
+               AND status = 'active' AND user_id <> $2
+            """,
+            row["org_id"], row["user_id"],
+        )
+        if other_admins == 0:
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot remove or suspend the only remaining locke_admin.",
+            )
+
+
+@app.post("/api/admin/orgs/{org_id}/members/{user_id}/suspend")
+async def suspend_member(
     org_id: str,
     user_id: str,
     admin: dict = Depends(require_locke_admin),
 ):
-    """Remove a user from an org. Soft delete (status='removed') + Clerk removal."""
+    """Suspend a user: Clerk-lock them so they can't sign in. Reversible."""
     async with admin_conn() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT m.id AS membership_id, m.role::text AS role,
-                   o.id AS org_id, o.clerk_org_id, o.is_internal,
-                   u.id AS user_id, u.clerk_user_id, u.email
-              FROM memberships m
-              JOIN organizations o ON o.id = m.org_id
-              JOIN users u ON u.id = m.user_id
-             WHERE m.org_id = $1 AND m.user_id = $2
-            """,
-            uuid.UUID(org_id), uuid.UUID(user_id),
-        )
-        if not row:
-            raise HTTPException(status_code=404, detail="Membership not found")
+        row = await _load_member_for_admin_action(conn, org_id, user_id)
+        await _guard_last_locke_admin(conn, row)
 
-        # Safety: don't allow removing the only locke_admin from the internal org.
-        if row["is_internal"] and row["role"] == "locke_admin":
-            other_admins = await conn.fetchval(
-                """
-                SELECT count(*) FROM memberships
-                 WHERE org_id = $1 AND role = 'locke_admin'
-                   AND status = 'active' AND user_id <> $2
-                """,
-                row["org_id"], row["user_id"],
-            )
-            if other_admins == 0:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Cannot remove the only remaining locke_admin.",
-                )
-
-        # Clerk removal first (so we don't leave a stale Clerk membership if our update fails).
-        if row["clerk_org_id"] and row["clerk_user_id"]:
-            await delete_clerk_membership(
-                clerk_org_id=row["clerk_org_id"],
-                clerk_user_id=row["clerk_user_id"],
-            )
+        if row["clerk_user_id"]:
+            await lock_clerk_user(row["clerk_user_id"])
 
         await conn.execute(
-            "UPDATE memberships SET status = 'removed', updated_at = now() "
+            "UPDATE users SET locked_at = now(), updated_at = now() "
             "WHERE id = $1",
-            row["membership_id"],
+            row["user_id"],
         )
 
     await _audit(
-        actor_user_id=admin["id"], action="membership.removed",
-        resource_type="membership", resource_id=row["membership_id"],
+        actor_user_id=admin["id"], action="user.suspended",
+        resource_type="user", resource_id=row["user_id"],
         org_id=row["org_id"],
         metadata={"email": row["email"], "role": row["role"]},
+    )
+
+    return {"ok": True}
+
+
+@app.post("/api/admin/orgs/{org_id}/members/{user_id}/unsuspend")
+async def unsuspend_member(
+    org_id: str,
+    user_id: str,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Reverse a suspension: Clerk-unlock + clear users.locked_at."""
+    async with admin_conn() as conn:
+        row = await _load_member_for_admin_action(conn, org_id, user_id)
+
+        if row["clerk_user_id"]:
+            await unlock_clerk_user(row["clerk_user_id"])
+
+        await conn.execute(
+            "UPDATE users SET locked_at = NULL, updated_at = now() "
+            "WHERE id = $1",
+            row["user_id"],
+        )
+
+    await _audit(
+        actor_user_id=admin["id"], action="user.unsuspended",
+        resource_type="user", resource_id=row["user_id"],
+        org_id=row["org_id"],
+        metadata={"email": row["email"], "role": row["role"]},
+    )
+
+    return {"ok": True}
+
+
+@app.delete("/api/admin/orgs/{org_id}/members/{user_id}")
+async def delete_member(
+    org_id: str,
+    user_id: str,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Hard delete a user.
+
+    Removes the Clerk user (so the email can be re-invited fresh) and deletes
+    our users row. memberships cascade via ON DELETE CASCADE.
+    documents.uploaded_by / audit_events.actor_user_id / invitations.invited_by
+    set to NULL via existing FKs — audit history survives, attribution does not.
+    """
+    async with admin_conn() as conn:
+        row = await _load_member_for_admin_action(conn, org_id, user_id)
+        await _guard_last_locke_admin(conn, row)
+
+        # Capture audit fields before the row is gone.
+        deleted_email = row["email"]
+        deleted_role = row["role"]
+        deleted_user_id = row["user_id"]
+        deleted_org_id = row["org_id"]
+
+        # Delete from Clerk first. If our DB delete fails afterwards we'd
+        # have a stale users row pointing at a now-gone clerk_user_id, but
+        # that's recoverable; the reverse (DB gone, Clerk still has the user)
+        # would block the email from being re-invited.
+        if row["clerk_user_id"]:
+            await delete_clerk_user(row["clerk_user_id"])
+
+        await conn.execute("DELETE FROM users WHERE id = $1", deleted_user_id)
+
+    await _audit(
+        actor_user_id=admin["id"], action="user.deleted",
+        resource_type="user", resource_id=deleted_user_id,
+        org_id=deleted_org_id,
+        metadata={"email": deleted_email, "role": deleted_role},
     )
 
     return {"ok": True}

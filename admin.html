@@ -1094,30 +1094,41 @@
             </tr>
           </thead>
           <tbody>
-            ${members.map(m => `
+            ${members.map(m => {
+              const isLocked = !!m.locked_at;
+              const displayStatus = isLocked ? 'suspended' : m.status;
+              const badgeClass = isLocked ? 'suspended' : (m.status === 'active' ? 'active' : 'archived');
+              return `
               <tr>
                 <td>${escapeHtml(m.email)}</td>
                 <td>${escapeHtml(m.name || '—')}</td>
                 <td><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(m.role)}</code></td>
-                <td><span class="badge badge-${m.status === 'active' ? 'active' : 'archived'}">${m.status}</span></td>
+                <td><span class="badge badge-${badgeClass}">${displayStatus}</span></td>
                 <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${m.activated_at ? fmtDate(m.activated_at) : '—'}</td>
                 ${canActOnMembers && m.status === 'active' ? `
                   <td style="text-align:right;white-space:nowrap;">
-                    <button class="btn-link" onclick='openEditRole(${JSON.stringify(m)})'>Edit role</button>
+                    ${isLocked ? '' : `<button class="btn-link" onclick='openEditRole(${JSON.stringify(m)})'>Edit role</button>&nbsp;·&nbsp;`}
+                    ${isLocked
+                      ? `<button class="btn-link" onclick='confirmUnsuspendMember(${JSON.stringify(m)})'>Unsuspend</button>`
+                      : `<button class="btn-link" onclick='confirmSuspendMember(${JSON.stringify(m)})'>Suspend</button>`}
                     &nbsp;·&nbsp;
-                    <button class="btn-link" style="color:var(--oxide);" onclick='confirmRemoveMember(${JSON.stringify(m)})'>Remove</button>
+                    <button class="btn-link" style="color:var(--oxide);" onclick='confirmDeleteMember(${JSON.stringify(m)})'>Delete</button>
                   </td>
                 ` : (canActOnMembers ? '<td></td>' : '')}
               </tr>
-            `).join('')}
+            `;}).join('')}
           </tbody>
         </table>
         <div class="cards">
-          ${members.map(m => `
+          ${members.map(m => {
+            const isLocked = !!m.locked_at;
+            const displayStatus = isLocked ? 'suspended' : m.status;
+            const badgeClass = isLocked ? 'suspended' : (m.status === 'active' ? 'active' : 'archived');
+            return `
             <div class="card">
               <div class="card-row">
                 <div class="card-title">${escapeHtml(m.email)}</div>
-                <span class="badge badge-${m.status === 'active' ? 'active' : 'archived'}">${m.status}</span>
+                <span class="badge badge-${badgeClass}">${displayStatus}</span>
               </div>
               ${m.name ? `<div class="card-sub" style="margin-top:4px;">${escapeHtml(m.name)}</div>` : ''}
               <div class="card-field">
@@ -1130,12 +1141,15 @@
               </div>
               ${canActOnMembers && m.status === 'active' ? `
                 <div class="card-actions">
-                  <button class="btn-link" onclick='openEditRole(${JSON.stringify(m)})'>Edit role</button>
-                  <button class="btn-link" style="color:var(--oxide);" onclick='confirmRemoveMember(${JSON.stringify(m)})'>Remove</button>
+                  ${isLocked ? '' : `<button class="btn-link" onclick='openEditRole(${JSON.stringify(m)})'>Edit role</button>`}
+                  ${isLocked
+                    ? `<button class="btn-link" onclick='confirmUnsuspendMember(${JSON.stringify(m)})'>Unsuspend</button>`
+                    : `<button class="btn-link" onclick='confirmSuspendMember(${JSON.stringify(m)})'>Suspend</button>`}
+                  <button class="btn-link" style="color:var(--oxide);" onclick='confirmDeleteMember(${JSON.stringify(m)})'>Delete</button>
                 </div>
               ` : ''}
             </div>
-          `).join('')}
+          `;}).join('')}
         </div>`;
     }
 
@@ -1387,16 +1401,46 @@
   });
 
   // ===============================================================
-  // REMOVE MEMBER
+  // SUSPEND / UNSUSPEND MEMBER
   // ===============================================================
-  function confirmRemoveMember(member) {
+  function confirmSuspendMember(member) {
     confirmDialog({
-      title: 'Remove user from organization?',
-      body: `<strong>${escapeHtml(member.email)}</strong> will lose access to this organization. Their account remains, but they'll be marked as removed from this org.`,
-      confirmLabel: 'Remove',
+      title: 'Suspend user?',
+      body: `<strong>${escapeHtml(member.email)}</strong> will be locked out and unable to sign in. This is reversible: use Unsuspend to restore access.`,
+      confirmLabel: 'Suspend',
+      onConfirm: async () => {
+        await apiPost(`/api/admin/orgs/${currentOrg.id}/members/${member.id}/suspend`, {});
+        flash(`Suspended ${member.email}.`);
+        await viewOrg(currentOrg.id);
+      },
+    });
+  }
+
+  function confirmUnsuspendMember(member) {
+    confirmDialog({
+      title: 'Unsuspend user?',
+      body: `<strong>${escapeHtml(member.email)}</strong> will regain the ability to sign in.`,
+      confirmLabel: 'Unsuspend',
+      onConfirm: async () => {
+        await apiPost(`/api/admin/orgs/${currentOrg.id}/members/${member.id}/unsuspend`, {});
+        flash(`Unsuspended ${member.email}.`);
+        await viewOrg(currentOrg.id);
+      },
+    });
+  }
+
+  // ===============================================================
+  // DELETE MEMBER (hard delete)
+  // ===============================================================
+  function confirmDeleteMember(member) {
+    confirmDialog({
+      title: 'Delete user permanently?',
+      body: `<strong>${escapeHtml(member.email)}</strong> will be removed from Clerk and our database. Audit history is preserved but attribution will show "deleted user". The email can be re-invited later as a fresh account. <strong>This cannot be undone.</strong>`,
+      confirmLabel: 'Delete user',
+      typeToConfirm: member.email,
       onConfirm: async () => {
         await apiDelete(`/api/admin/orgs/${currentOrg.id}/members/${member.id}`);
-        flash(`Removed ${member.email}.`);
+        flash(`Deleted ${member.email}.`);
         await viewOrg(currentOrg.id);
       },
     });
