@@ -1418,7 +1418,7 @@
         <div style="text-align:right;white-space:nowrap;">
           <a href="#" class="note-edit" style="margin-left:0;" onclick="return portalEditRole(event,'${m.id}')">Role</a>
           <a href="#" class="note-edit" onclick="return portalToggleSuspend(event,'${m.id}',${locked})">${locked ? 'Unsuspend' : 'Suspend'}</a>
-          <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return portalDeleteMember(event,'${m.id}')">Remove</a>
+          <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return portalDeleteMember(event,'${m.id}')">Delete</a>
         </div>
       </div>`;
   }
@@ -1507,13 +1507,18 @@
 
   async function portalDeleteMember(event, id) {
     event.preventDefault();
-    if (!confirm('Remove this member from the organization? This cannot be undone.')) return false;
+    const m = membersById[id];
+    const who = m ? (m.email || 'this user') : 'this user';
+    // Full system delete: removes the Clerk login + the user record, not just
+    // the org membership. Client users belong to one org, so this is the same
+    // thing for them; only the superadmin spans multiple orgs.
+    if (!confirm(`Delete ${who} from the system entirely? Their login is revoked and their account removed. This cannot be undone.`)) return false;
     try {
       await adminApi('DELETE', `/api/admin/orgs/${adminSelectedOrgId}/members/${id}`);
       await renderTeam();
     } catch (err) {
-      console.error('Remove member failed:', err);
-      alert('Could not remove the member. ' + cleanErr(err));
+      console.error('Delete user failed:', err);
+      alert('Could not delete the user. ' + cleanErr(err));
     }
     return false;
   }
