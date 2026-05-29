@@ -371,12 +371,31 @@ async def delete_clerk_organization(clerk_org_id: str) -> None:
     Used for hard-deleting client orgs that should disappear entirely (e.g.
     orphan orgs created by users with no membership). 404 is treated as
     success (already gone).
+
+    Network/timeout errors are converted to HTTPException(502) so the
+    request returns a clean error response with CORS headers instead of
+    a raw 500 that the browser blocks as a CORS violation.
     """
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.delete(
-            f"{CLERK_API_BASE}/organizations/{clerk_org_id}",
-            headers=_clerk_headers(),
-        )
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.delete(
+                f"{CLERK_API_BASE}/organizations/{clerk_org_id}",
+                headers=_clerk_headers(),
+            )
+    except httpx.TimeoutException as exc:
+        log.warning("clerk.api.delete_organization_timeout clerk_org_id=%s", clerk_org_id)
+        raise HTTPException(
+            status_code=504,
+            detail=f"Clerk org delete timed out: {exc}",
+        ) from exc
+    except httpx.HTTPError as exc:
+        log.warning("clerk.api.delete_organization_network clerk_org_id=%s err=%s",
+                    clerk_org_id, exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Clerk org delete failed (network): {exc}",
+        ) from exc
+
     if resp.status_code >= 400 and resp.status_code != 404:
         log.warning("clerk.api.delete_organization_failed status=%d body=%s",
                     resp.status_code, resp.text)

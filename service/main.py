@@ -17,6 +17,8 @@ import sys
 import uuid
 from typing import Any, Literal, Optional
 
+import asyncpg
+
 from dotenv import load_dotenv
 
 load_dotenv()  # pull .env in local dev; no-op on Railway where env vars are injected
@@ -663,13 +665,16 @@ async def delete_org(
 
     Refuses to delete:
     - The internal Locke org (would be catastrophic).
-    - Any org with documents (data loss risk; archive instead).
+    - Any org with documents, including soft-deleted ones (RESTRICT FK
+      applies to all rows, not just deleted_at IS NULL).
 
     For orgs that pass the guards:
     1. Deletes the Clerk org (so admins don't see a stale entry there).
-    2. Deletes our memberships (FK to organizations is RESTRICT, requires explicit).
-    3. Deletes our organizations row. Cascades to invitations; audit_events.org_id
-       set to NULL to preserve history with a hole where the org used to be.
+    2. Deletes our memberships in a transaction (FK to organizations is
+       RESTRICT, requires explicit). invitations CASCADE; audit_events
+       SET NULL to preserve history with a hole.
+    3. Catches FK violations on the final DELETE to surface the offending
+       constraint instead of bubbling a raw 500.
 
     Idempotent with _on_org_deleted webhook: whichever side runs first wins,
     the other becomes a no-op.
@@ -688,24 +693,49 @@ async def delete_org(
                 detail="Cannot delete the internal Locke organization.",
             )
 
+        # RESTRICT FK applies to ALL rows including soft-deleted, so count
+        # all of them. (The display elsewhere filters by deleted_at IS NULL,
+        # but for FK purposes the soft-deleted rows still block.)
         doc_count = await conn.fetchval(
-            "SELECT count(*) FROM documents WHERE org_id = $1 AND deleted_at IS NULL",
+            "SELECT count(*) FROM documents WHERE org_id = $1",
             org["id"],
         )
         if doc_count:
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    f"Cannot delete: org has {doc_count} document(s). "
-                    f"Archive the org or delete its documents first."
+                    f"Cannot delete: org has {doc_count} document row(s) "
+                    f"(including any soft-deleted). Archive the org or purge "
+                    f"the documents first."
                 ),
             )
 
         if org["clerk_org_id"]:
             await delete_clerk_organization(org["clerk_org_id"])
 
-        await conn.execute("DELETE FROM memberships WHERE org_id = $1", org["id"])
-        await conn.execute("DELETE FROM organizations WHERE id = $1", org["id"])
+        # Transaction so a partial failure (memberships gone, org still here)
+        # is impossible. Catch FK violations specifically so the error body
+        # names the constraint instead of returning an opaque 500.
+        try:
+            async with conn.transaction():
+                await conn.execute(
+                    "DELETE FROM memberships WHERE org_id = $1", org["id"],
+                )
+                await conn.execute(
+                    "DELETE FROM organizations WHERE id = $1", org["id"],
+                )
+        except asyncpg.exceptions.ForeignKeyViolationError as exc:
+            log.warning(
+                "delete_org.fk_violation org_id=%s detail=%s",
+                org["id"], exc,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Cannot delete org: a foreign key constraint is still "
+                    f"holding it. Details: {exc}"
+                ),
+            ) from exc
 
     await _audit(
         actor_user_id=admin["id"], action="organization.deleted",
