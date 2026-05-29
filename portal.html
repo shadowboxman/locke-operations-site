@@ -377,7 +377,7 @@
   }
   .doc-row {
     display: grid;
-    grid-template-columns: 1fr 140px 100px 80px;
+    grid-template-columns: 1fr 140px 100px 150px;
     gap: 16px;
     align-items: center;
     padding: 14px 20px;
@@ -400,6 +400,25 @@
     letter-spacing: 0.12em;
     color: var(--oxide);
     text-align: right;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  /* Editable description on a client's own shared uploads. Lives in the wide
+     name column, not the action column, so actions never crowd. */
+  .shared-note {
+    font-weight: 400;
+    color: var(--concrete);
+    font-size: 12px;
+    margin-top: 3px;
+  }
+  .shared-note .muted { font-style: italic; }
+  .note-edit {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--oxide);
+    margin-left: 10px;
     cursor: pointer;
   }
 
@@ -577,8 +596,8 @@
     .sidebar { display: none; }
     .tiles { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
-    .doc-row { grid-template-columns: 1fr 100px; gap: 12px; }
-    .doc-row .doc-meta:nth-of-type(2) { display: none; }
+    .doc-row { grid-template-columns: 1fr auto; gap: 12px; }
+    .doc-row .doc-meta { display: none; }
     .issue-row { grid-template-columns: 1fr 80px; gap: 12px; }
     .issue-row .issue-type, .issue-row .issue-date { display: none; }
     main { padding: 24px 16px 40px; }
@@ -1346,9 +1365,16 @@
   }
 
   function docRow(d, admin, isShared) {
-    const noteHtml = d.note
-      ? `<div style="font-weight:400;color:var(--concrete);font-size:12px;margin-top:3px;">${escapeHtml(d.note)}</div>`
-      : '';
+    // The note is editable only on a client's own shared upload.
+    const editableNote = (!admin && isShared && d.mine);
+    let noteHtml = '';
+    if (editableNote) {
+      const txt = d.note ? escapeHtml(d.note) : '<span class="muted">No description</span>';
+      noteHtml = `<div class="shared-note" id="noteCell-${d.id}">${txt}` +
+        `<a href="#" class="note-edit" onclick="return editSharedNote(event, '${d.id}')">${d.note ? 'Edit' : 'Add description'}</a></div>`;
+    } else if (d.note) {
+      noteHtml = `<div class="shared-note">${escapeHtml(d.note)}</div>`;
+    }
     let actions = `<a href="#" data-doc-id="${d.id}" onclick="return downloadDocument(event, this)">Download</a>`;
     if (admin) {
       actions += ` &middot; <a href="#" data-doc-id="${d.id}" onclick="return adminDeleteDoc(event, this)" style="color:var(--oxide);">Delete</a>`;
@@ -1382,7 +1408,13 @@
     renderShared(data.shared || [], admin);
   }
 
+  // Last-rendered shared items, keyed by id, so inline note editing can read
+  // the current note without another fetch.
+  let sharedById = {};
+
   function renderShared(items, admin) {
+    sharedById = {};
+    items.forEach(d => { sharedById[d.id] = d; });
     const countEl = document.getElementById('sharedCount');
     if (countEl) countEl.textContent = items.length + (items.length === 1 ? ' file' : ' files');
     const el = document.getElementById('sharedList');
@@ -1514,6 +1546,54 @@
       alert('Could not remove that file. Please try again.');
       link.style.pointerEvents = '';
     }
+    return false;
+  }
+
+  // Inline edit of a client upload's description (note). Swaps the note cell
+  // for an input; Save PATCHes /api/documents/{id}; Cancel re-renders.
+  function editSharedNote(event, id) {
+    event.preventDefault();
+    const item = sharedById[id];
+    const cell = document.getElementById('noteCell-' + id);
+    if (!item || !cell) return false;
+    cell.innerHTML = `
+      <input class="form-input" id="noteEdit-${id}" maxlength="2000" placeholder="Describe this file"
+             value="${escapeHtml(item.note || '')}" style="font-size:12px;padding:6px 8px;margin:4px 0;max-width:420px;">
+      <div style="margin-top:2px;">
+        <a href="#" class="note-edit" style="margin-left:0;" onclick="return saveSharedNote(event, '${id}')">Save</a>
+        <a href="#" class="note-edit" style="color:var(--concrete);" onclick="return cancelSharedNote(event)">Cancel</a>
+      </div>`;
+    const inp = document.getElementById('noteEdit-' + id);
+    if (inp) { inp.focus(); inp.select(); }
+    return false;
+  }
+
+  async function saveSharedNote(event, id) {
+    event.preventDefault();
+    const inp = document.getElementById('noteEdit-' + id);
+    if (!inp) return false;
+    const note = (inp.value || '').trim();
+    inp.disabled = true;
+    try {
+      const token = await Clerk.session.getToken();
+      const res = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: note || null }),
+      });
+      if (!res.ok) throw new Error(`patch ${res.status}`);
+      await loadDocuments();
+    } catch (err) {
+      console.error('Description update failed:', err);
+      alert('Could not save the description. Please try again.');
+      inp.disabled = false;
+    }
+    return false;
+  }
+
+  function cancelSharedNote(event) {
+    event.preventDefault();
+    loadDocuments(); // re-render restores the note display
     return false;
   }
 

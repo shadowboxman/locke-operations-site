@@ -1406,6 +1406,55 @@ async def client_delete_document(
     return {"ok": True, "id": str(doc["id"])}
 
 
+class UpdateDocumentNoteRequest(BaseModel):
+    note: Optional[str] = Field(default=None, max_length=2000)
+
+
+@app.patch("/api/documents/{document_id}")
+async def client_update_document_note(
+    document_id: str,
+    payload: UpdateDocumentNoteRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Edit the description (note) on a client upload the caller made. Scoped to
+    source='client' AND uploaded_by = caller, identical to the delete path, so
+    Locke deliverables and other people's uploads can't be edited here.
+    """
+    try:
+        doc_uuid = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    note = (payload.note or "").strip() or None
+
+    async with admin_conn() as conn:
+        doc = await conn.fetchrow(
+            """
+            UPDATE documents
+               SET note = $3
+             WHERE id = $1 AND source = 'client'
+               AND uploaded_by = $2 AND deleted_at IS NULL
+            RETURNING id, org_id, name
+            """,
+            doc_uuid, user["id"], note,
+        )
+
+    if not doc:
+        await _audit(
+            actor_user_id=user["id"], action="document.update",
+            resource_type="document", resource_id=doc_uuid, outcome="denied",
+        )
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    await _audit(
+        actor_user_id=user["id"], action="document.note_updated",
+        resource_type="document", resource_id=doc["id"], org_id=doc["org_id"],
+        metadata={"name": doc["name"], "has_note": note is not None},
+    )
+
+    return {"ok": True, "id": str(doc["id"]), "note": note}
+
+
 @app.get("/api/documents/{document_id}/download")
 async def download_document(
     document_id: str,
