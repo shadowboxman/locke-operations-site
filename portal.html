@@ -1303,49 +1303,215 @@
       </div>`).join('');
   }
 
-  // Settings > Team panel. Admin: the selected org's members (read-only here;
-  // invite/manage is a later step). Client: unchanged placeholder.
+  // Settings > Team panel. Admin: the selected org's members with full inline
+  // management (invite, role, suspend, remove) + pending invitations. Client:
+  // unchanged "Just you" placeholder.
+  const ROLE_LABELS = {
+    client_admin: 'Client admin', client_member: 'Client member',
+    locke_admin: 'Locke admin', locke_staff: 'Locke staff',
+  };
+  let membersById = {};
+
+  // Small helper for admin writes. Throws "status: body" on non-2xx.
+  async function adminApi(method, path, body) {
+    const token = await Clerk.session.getToken();
+    const opts = { method, headers: { Authorization: `Bearer ${token}` } };
+    if (body !== undefined) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(`${API_BASE_URL}${path}`, opts);
+    if (!res.ok) { throw new Error(`${res.status}: ${await res.text()}`); }
+    return res.status === 204 ? null : res.json().catch(() => null);
+  }
+
   async function renderTeam() {
     const body = document.getElementById('teamPanelBody');
     if (!body) return;
-    if (!lockeAdminMode) return; // leave the client "Just you" placeholder as-is
+    if (!lockeAdminMode) return; // client keeps the "Just you" placeholder
 
     if (!adminSelectedOrgId) {
       body.innerHTML = `<div class="empty"><div class="empty-sub">No organization selected.</div></div>`;
       return;
     }
     body.innerHTML = `<div class="empty"><div class="empty-sub">Loading team...</div></div>`;
-    let members;
+    let data;
     try {
-      const token = await Clerk.session.getToken();
-      const res = await fetch(`${API_BASE_URL}/api/admin/orgs/${adminSelectedOrgId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error(`org detail ${res.status}`);
-      const data = await res.json();
-      members = data.members || [];
+      data = await adminApi('GET', `/api/admin/orgs/${adminSelectedOrgId}`);
     } catch (err) {
       console.error('Failed to load team:', err);
       body.innerHTML = `<div class="empty"><div class="empty-sub">Could not load the team for this organization.</div></div>`;
       return;
     }
-    if (!members.length) {
-      body.innerHTML = `<div class="empty"><div class="empty-title">No members yet</div><div class="empty-sub">This organization has no active members.</div></div>`;
-      return;
-    }
+    const members = data.members || [];
+    const pending = data.pending_invitations || [];
+    membersById = {};
+    members.forEach(m => { membersById[m.id] = m; });
+
     body.innerHTML = `
       <div class="panel-body" style="padding-top:4px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px 16px;font-size:13px;align-items:center;">
-          ${members.map(m => {
-            const locked = !!m.locked_at;
-            const status = locked ? 'suspended' : (m.status || '');
-            return `
-              <div style="color:var(--navy);">${escapeHtml(m.email)}</div>
-              <div style="color:var(--concrete);font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(m.role || '')}</div>
-              <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--concrete);">${escapeHtml(status)}</div>`;
-          }).join('')}
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+          <div class="form-help" style="margin:0;">Members of <strong style="color:var(--navy);">${escapeHtml(adminSelectedOrgName())}</strong>.</div>
+          <button class="btn-primary" type="button" onclick="togglePortalInvite()">Invite user</button>
+        </div>
+
+        <div id="portalInviteForm" style="display:none;border:1px solid var(--hairline-strong);background:var(--bone);padding:14px;margin-bottom:18px;">
+          <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;">
+            <div class="form-field" style="flex:1 1 240px;">
+              <label class="form-label" for="portalInviteEmail">Email</label>
+              <input class="form-input" type="email" id="portalInviteEmail" placeholder="user@company.com">
+            </div>
+            <div class="form-field" style="flex:0 0 auto;">
+              <label class="form-label" for="portalInviteRole">Role</label>
+              <select class="form-select" id="portalInviteRole" style="width:auto;min-width:190px;">
+                <option value="client_member" selected>Client member</option>
+                <option value="client_admin">Client admin</option>
+              </select>
+            </div>
+            <button class="btn-primary" type="button" onclick="portalInviteUser()">Send invitation</button>
+          </div>
+          <div id="portalInviteStatus" class="form-help" style="margin-top:10px;min-height:1px;"></div>
+        </div>
+
+        ${members.length ? members.map(memberRow).join('') : `<div class="empty"><div class="empty-sub">No active members yet.</div></div>`}
+
+        ${pending.length ? `
+          <div class="form-label" style="margin-top:22px;margin-bottom:6px;">Pending invitations</div>
+          ${pending.map(pendingRow).join('')}` : ''}
+      </div>`;
+  }
+
+  function memberRow(m) {
+    const locked = !!m.locked_at;
+    const status = locked ? 'suspended' : (m.status || '');
+    return `
+      <div style="display:grid;grid-template-columns:1fr 150px 90px auto;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--hairline);">
+        <div>
+          <div style="color:var(--navy);font-weight:500;">${escapeHtml(m.email)}</div>
+          ${m.name ? `<div style="color:var(--concrete);font-size:12px;margin-top:2px;">${escapeHtml(m.name)}</div>` : ''}
+        </div>
+        <div id="roleCell-${m.id}" class="doc-meta" style="letter-spacing:0.06em;">${escapeHtml(ROLE_LABELS[m.role] || m.role || '')}</div>
+        <div class="doc-meta">${escapeHtml(status)}</div>
+        <div style="text-align:right;white-space:nowrap;">
+          <a href="#" class="note-edit" style="margin-left:0;" onclick="return portalEditRole(event,'${m.id}')">Role</a>
+          <a href="#" class="note-edit" onclick="return portalToggleSuspend(event,'${m.id}',${locked})">${locked ? 'Unsuspend' : 'Suspend'}</a>
+          <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return portalDeleteMember(event,'${m.id}')">Remove</a>
         </div>
       </div>`;
+  }
+
+  function pendingRow(p) {
+    return `
+      <div style="display:grid;grid-template-columns:1fr 150px auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--hairline);">
+        <div style="color:var(--navy);">${escapeHtml(p.email || '—')}</div>
+        <div class="doc-meta">${escapeHtml(ROLE_LABELS[p.clerk_role] || p.clerk_role || 'invited')}</div>
+        <div style="text-align:right;white-space:nowrap;">
+          ${p.id ? `<a href="#" class="note-edit" style="margin-left:0;color:var(--oxide);" onclick="return portalRevokeInvitation(event,'${p.id}','${escapeHtml(p.email || '')}')">Revoke</a>` : ''}
+        </div>
+      </div>`;
+  }
+
+  function togglePortalInvite() {
+    const f = document.getElementById('portalInviteForm');
+    if (f) f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
+  }
+
+  async function portalInviteUser() {
+    const email = (document.getElementById('portalInviteEmail').value || '').trim();
+    const role = document.getElementById('portalInviteRole').value;
+    const status = document.getElementById('portalInviteStatus');
+    if (!email) { status.textContent = 'Enter an email address.'; return; }
+    status.textContent = 'Sending invitation...';
+    try {
+      await adminApi('POST', `/api/admin/orgs/${adminSelectedOrgId}/invitations`, { email, role });
+      await renderTeam();
+    } catch (err) {
+      console.error('Invite failed:', err);
+      status.textContent = 'Could not send the invitation. ' + cleanErr(err);
+    }
+  }
+
+  function portalEditRole(event, id) {
+    event.preventDefault();
+    const m = membersById[id];
+    const cell = document.getElementById('roleCell-' + id);
+    if (!m || !cell) return false;
+    cell.innerHTML = `
+      <select id="roleEdit-${id}" class="form-select" style="font-size:12px;padding:5px 8px;width:auto;min-width:150px;">
+        <option value="client_member"${m.role === 'client_member' ? ' selected' : ''}>Client member</option>
+        <option value="client_admin"${m.role === 'client_admin' ? ' selected' : ''}>Client admin</option>
+      </select>
+      <div style="margin-top:6px;white-space:nowrap;">
+        <a href="#" class="note-edit" style="margin-left:0;" onclick="return portalSaveRole(event,'${id}')">Save</a>
+        <a href="#" class="note-edit" style="color:var(--concrete);" onclick="return portalCancelRole(event)">Cancel</a>
+      </div>`;
+    return false;
+  }
+
+  async function portalSaveRole(event, id) {
+    event.preventDefault();
+    const sel = document.getElementById('roleEdit-' + id);
+    if (!sel) return false;
+    try {
+      await adminApi('PATCH', `/api/admin/orgs/${adminSelectedOrgId}/members/${id}`, { role: sel.value });
+      await renderTeam();
+    } catch (err) {
+      console.error('Role update failed:', err);
+      alert('Could not change the role. ' + cleanErr(err));
+    }
+    return false;
+  }
+
+  function portalCancelRole(event) {
+    event.preventDefault();
+    renderTeam();
+    return false;
+  }
+
+  async function portalToggleSuspend(event, id, locked) {
+    event.preventDefault();
+    const verb = locked ? 'unsuspend' : 'suspend';
+    if (!confirm(`${locked ? 'Unsuspend' : 'Suspend'} this member?`)) return false;
+    try {
+      await adminApi('POST', `/api/admin/orgs/${adminSelectedOrgId}/members/${id}/${verb}`, {});
+      await renderTeam();
+    } catch (err) {
+      console.error('Suspend toggle failed:', err);
+      alert(`Could not ${verb} the member. ` + cleanErr(err));
+    }
+    return false;
+  }
+
+  async function portalDeleteMember(event, id) {
+    event.preventDefault();
+    if (!confirm('Remove this member from the organization? This cannot be undone.')) return false;
+    try {
+      await adminApi('DELETE', `/api/admin/orgs/${adminSelectedOrgId}/members/${id}`);
+      await renderTeam();
+    } catch (err) {
+      console.error('Remove member failed:', err);
+      alert('Could not remove the member. ' + cleanErr(err));
+    }
+    return false;
+  }
+
+  async function portalRevokeInvitation(event, invId, email) {
+    event.preventDefault();
+    if (!confirm(`Revoke the invitation${email ? ' for ' + email : ''}?`)) return false;
+    try {
+      await adminApi('DELETE', `/api/admin/orgs/${adminSelectedOrgId}/invitations/${invId}`);
+      await renderTeam();
+    } catch (err) {
+      console.error('Revoke failed:', err);
+      alert('Could not revoke the invitation. ' + cleanErr(err));
+    }
+    return false;
+  }
+
+  // Pull the human-readable detail out of an "status: {json}" error if present.
+  function cleanErr(err) {
+    const m = String(err.message || err).match(/"detail"\s*:\s*"([^"]+)"/);
+    return m ? m[1] : '';
   }
 
   // The admin per-org endpoint returns a flat list; reshape it to the same
