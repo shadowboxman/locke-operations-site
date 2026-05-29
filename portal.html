@@ -1522,7 +1522,7 @@
           <a href="#" class="note-edit" onclick="return portalToggleSuspend(event,'${m.id}',${locked})">${locked ? 'Unsuspend' : 'Suspend'}</a>
           <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return portalDeleteMember(event,'${m.id}')">Delete</a>`;
     return `
-      <div style="display:grid;grid-template-columns:1fr 150px 90px auto;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--hairline);">
+      <div style="display:grid;grid-template-columns:1fr 150px 90px 190px;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--hairline);">
         <div>
           <div style="color:var(--navy);font-weight:500;">${escapeHtml(m.email)}</div>
           ${m.name ? `<div style="color:var(--concrete);font-size:12px;margin-top:2px;">${escapeHtml(m.name)}</div>` : ''}
