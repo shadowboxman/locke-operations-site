@@ -489,6 +489,46 @@ async def get_org(org_id: str, admin: dict = Depends(require_locke_admin)):
     }
 
 
+@app.post("/api/admin/internal-org/link-clerk")
+async def link_internal_org_clerk(admin: dict = Depends(require_locke_admin)):
+    """One-time setup: give the internal Locke org a real Clerk organization so
+    staff can be invited through the standard flow. Full locke_admin only.
+
+    The internal org was seeded without a Clerk org, so it had no clerk_org_id
+    and invitations had nothing to target. This creates the Clerk org (with the
+    caller as its creator/admin) and links it to the existing internal row.
+    """
+    async with admin_conn() as conn:
+        await _require_full_admin(conn, admin)
+        org = await conn.fetchrow(
+            "SELECT id, name, slug, clerk_org_id FROM organizations WHERE is_internal = true LIMIT 1"
+        )
+        if not org:
+            raise HTTPException(status_code=404, detail="No internal Locke organization found")
+        if org["clerk_org_id"]:
+            return {"ok": True, "already_linked": True, "clerk_org_id": org["clerk_org_id"]}
+
+        clerk_org = await create_clerk_organization(
+            name=org["name"],
+            slug=org["slug"],
+            created_by_clerk_id=admin["clerk_user_id"],
+        )
+        clerk_org_id = clerk_org["id"]
+        # Set our row's link first; the async organization.created webhook then
+        # hits ON CONFLICT (clerk_org_id) DO NOTHING and won't create a duplicate.
+        await conn.execute(
+            "UPDATE organizations SET clerk_org_id = $1, updated_at = now() WHERE id = $2",
+            clerk_org_id, org["id"],
+        )
+
+    await _audit(
+        actor_user_id=admin["id"], action="org.clerk_linked",
+        resource_type="organization", resource_id=org["id"], org_id=org["id"],
+        metadata={"clerk_org_id": clerk_org_id, "internal": True},
+    )
+    return {"ok": True, "already_linked": False, "clerk_org_id": clerk_org_id}
+
+
 @app.post("/api/admin/orgs/{org_id}/invitations")
 async def invite_user(
     org_id: str,

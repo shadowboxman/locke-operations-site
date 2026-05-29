@@ -1001,9 +1001,22 @@
       const data = await apiGet(`/api/admin/orgs/${internalOrg.id}`);
       const members = data.members || [];
       const pending = data.pending_invitations || [];
-      el.innerHTML = members.length
+      const linked = !!internalOrg.clerk_org_id;
+
+      // Invitations need the internal org to have a Clerk organization.
+      document.getElementById('btnInviteStaff').style.display = linked ? '' : 'none';
+      const notice = linked ? '' : `
+        <div class="empty" style="margin-bottom:16px;">
+          <div class="empty-title">Locke isn't connected to Clerk yet</div>
+          <div class="empty-sub">Staff invitations need a Clerk organization for Locke. Connect it once (full admin) to enable invites.</div>
+          <div style="margin-top:12px;"><button class="btn-primary" id="btnLinkClerk">Connect Locke to Clerk</button></div>
+        </div>`;
+
+      el.innerHTML = notice + (members.length
         ? `<table class="table"><thead><tr><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>${members.map(staffMemberRow).join('')}</tbody></table>`
-        : '<div class="empty"><div class="empty-sub">No staff members.</div></div>';
+        : '<div class="empty"><div class="empty-sub">No staff members.</div></div>');
+      if (!linked) document.getElementById('btnLinkClerk').addEventListener('click', linkInternalClerk);
+
       pendEl.innerHTML = pending.length
         ? `<table class="table"><thead><tr><th>Email</th><th>Clerk role</th><th></th></tr></thead><tbody>${pending.map(staffPendingRow).join('')}</tbody></table>`
         : '<div class="empty"><div class="empty-sub">No pending invitations.</div></div>';
@@ -1038,6 +1051,19 @@
       <td><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(p.clerk_role || '—')}</code></td>
       <td style="text-align:right;">${p.id ? `<button class="btn-link" style="color:var(--oxide);" onclick='revokeStaffInvite("${p.id}","${escapeHtml(p.email || '')}")'>Revoke</button>` : ''}</td>
     </tr>`;
+  }
+
+  async function linkInternalClerk() {
+    const btn = document.getElementById('btnLinkClerk');
+    if (btn) { btn.disabled = true; btn.textContent = 'Connecting...'; }
+    try {
+      await apiPost('/api/admin/internal-org/link-clerk', {});
+      flash('Locke connected to Clerk. You can now invite staff.');
+      loadStaff();
+    } catch (err) {
+      flash(`Failed: ${err.message}`, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Connect Locke to Clerk'; }
+    }
   }
 
   async function toggleStaffRole(userId, targetRole) {
