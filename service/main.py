@@ -286,7 +286,7 @@ class CreateOrgRequest(BaseModel):
 
 class InviteUserRequest(BaseModel):
     email: EmailStr
-    role: Literal["client_admin", "client_member"] = "client_member"
+    role: Literal["locke_admin", "locke_staff", "client_admin", "client_member"] = "client_member"
 
 
 class UpdateOrgRequest(BaseModel):
@@ -504,13 +504,23 @@ async def invite_user(
     """
     async with admin_conn() as conn:
         org = await conn.fetchrow(
-            "SELECT id, clerk_org_id, name FROM organizations WHERE id = $1",
+            "SELECT id, clerk_org_id, name, is_internal FROM organizations WHERE id = $1",
             uuid.UUID(org_id),
         )
         if not org:
             raise HTTPException(status_code=404, detail="Org not found")
         if not org["clerk_org_id"]:
             raise HTTPException(status_code=409, detail="Org has no Clerk link")
+
+        # Role/org-type guard. Locke roles only in the internal org and only a
+        # full locke_admin may grant them; client roles only in client orgs.
+        invite_is_locke = payload.role in ("locke_admin", "locke_staff")
+        if invite_is_locke:
+            if not org["is_internal"]:
+                raise HTTPException(status_code=409, detail="Locke roles can only be assigned in the internal Locke organization.")
+            await _require_full_admin(conn, admin)
+        elif org["is_internal"]:
+            raise HTTPException(status_code=409, detail="Client roles cannot be assigned in the internal Locke organization.")
 
         existing = await conn.fetchrow(
             """
@@ -791,8 +801,17 @@ async def update_member_role(
         if not row:
             raise HTTPException(status_code=404, detail="Membership not found")
 
-        # Locke staff are managed only from the admin surface, not a client org.
-        await _guard_locke_staff_managed_internally(conn, row)
+        # Locke staff are managed only from the admin surface, not a client org;
+        # internal-org role changes require a full locke_admin caller.
+        await _guard_locke_staff_managed_internally(conn, admin, row)
+
+        # Keep roles consistent with org type: internal org holds Locke roles,
+        # client orgs hold client roles. Prevents privilege crossover.
+        new_is_locke = payload.role in ("locke_admin", "locke_staff")
+        if row["is_internal"] and not new_is_locke:
+            raise HTTPException(status_code=409, detail="Internal Locke org members must hold a Locke role.")
+        if not row["is_internal"] and new_is_locke:
+            raise HTTPException(status_code=409, detail="Client org members cannot hold Locke roles.")
 
         # Sanity: don't allow downgrading the last locke_admin out of the internal org.
         if row["is_internal"] and row["old_role"] == "locke_admin" and \
@@ -891,14 +910,16 @@ def _guard_not_self(admin: dict, row: dict[str, Any]) -> None:
         )
 
 
-async def _guard_locke_staff_managed_internally(conn, row: dict[str, Any]) -> None:
-    """Locke staff/admins may only be managed from the internal Locke org (the
-    admin surface), never through a client-org membership. Blocks suspend /
-    delete / role-change of a user who holds any active locke_admin or
-    locke_staff role when the action is taken in a client-org context.
+async def _guard_locke_staff_managed_internally(conn, admin: dict, row: dict[str, Any]) -> None:
+    """Locke staff/admins are managed only from the internal Locke org, and only
+    by a full locke_admin. Two cases:
+      - Action within the internal Locke org -> require full locke_admin caller.
+      - Action within a client org on a user who holds any Locke role -> blocked
+        (such a user is managed from the internal org, not here).
     """
     if row["is_internal"]:
-        return  # the internal Locke org IS the admin surface; allow
+        await _require_full_admin(conn, admin)
+        return
     is_staff = await conn.fetchval(
         """
         SELECT EXISTS (
@@ -917,6 +938,27 @@ async def _guard_locke_staff_managed_internally(conn, row: dict[str, Any]) -> No
         )
 
 
+async def _require_full_admin(conn, admin: dict) -> None:
+    """Require the CALLER to be a full locke_admin (not merely locke_staff).
+    Gate for the most sensitive operations: managing Locke staff/admins. The
+    require_locke_admin dependency accepts locke_staff too; this is stricter.
+    """
+    is_admin = await conn.fetchval(
+        """
+        SELECT EXISTS (
+          SELECT 1 FROM memberships
+           WHERE user_id = $1 AND role = 'locke_admin' AND status = 'active'
+        )
+        """,
+        admin["id"],
+    )
+    if not is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="This action requires the full locke_admin role.",
+        )
+
+
 @app.post("/api/admin/orgs/{org_id}/members/{user_id}/suspend")
 async def suspend_member(
     org_id: str,
@@ -928,7 +970,7 @@ async def suspend_member(
         row = await _load_member_for_admin_action(conn, org_id, user_id)
         await _guard_last_locke_admin(conn, row)
         _guard_not_self(admin, row)
-        await _guard_locke_staff_managed_internally(conn, row)
+        await _guard_locke_staff_managed_internally(conn, admin, row)
 
         if row["clerk_user_id"]:
             await lock_clerk_user(row["clerk_user_id"])
@@ -995,7 +1037,7 @@ async def delete_member(
         row = await _load_member_for_admin_action(conn, org_id, user_id)
         await _guard_last_locke_admin(conn, row)
         _guard_not_self(admin, row)
-        await _guard_locke_staff_managed_internally(conn, row)
+        await _guard_locke_staff_managed_internally(conn, admin, row)
 
         # Capture audit fields before the row is gone.
         deleted_email = row["email"]

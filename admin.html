@@ -618,11 +618,30 @@
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
           <div class="page-meta"><span id="orgsCount">0</span> total</div>
+          <button class="btn-secondary" id="btnManageStaff" style="display:none;">Locke staff</button>
           <button class="btn-primary" id="btnCreateOrg">Create org</button>
         </div>
       </div>
 
       <div id="orgsTableContainer"></div>
+    </section>
+
+    <!-- VIEW: LOCKE STAFF (internal org members) -->
+    <section class="view" id="view-staff">
+      <button class="breadcrumb" onclick="showView('orgs')">← All organizations</button>
+      <div class="page-header">
+        <div>
+          <div class="page-eyebrow">Admin</div>
+          <h1>Locke staff</h1>
+        </div>
+        <button class="btn-primary" id="btnInviteStaff">Invite staff</button>
+      </div>
+      <p style="color: var(--concrete); font-size: 13px; margin-bottom: 18px;">
+        Members of the internal Locke organization. Granting or changing these roles requires the full locke_admin role.
+      </p>
+      <div id="staffTableContainer"></div>
+      <div class="section-row"><div class="section-title">Pending invitations</div></div>
+      <div id="staffPendingContainer"></div>
     </section>
   </main>
 
@@ -653,6 +672,36 @@
     </div>
   </div>
 
+  <!-- MODAL: INVITE LOCKE STAFF -->
+  <div class="modal-backdrop" id="modalInviteStaff">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Invite Locke staff</div>
+        <button class="modal-close" onclick="closeModal('modalInviteStaff')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="formInviteStaff">
+          <div class="form-field">
+            <label class="form-label" for="staffInviteEmail">Email <span class="req">*</span></label>
+            <input class="form-input" type="email" id="staffInviteEmail" required placeholder="name@lockeoperations.com">
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="staffInviteRole">Role</label>
+            <select class="form-select" id="staffInviteRole">
+              <option value="locke_staff" selected>Locke staff (operational access)</option>
+              <option value="locke_admin">Locke admin (full access, manages staff)</option>
+            </select>
+          </div>
+          <div class="form-help">They receive a Clerk invitation into the internal Locke organization. Only a full locke_admin can grant these roles.</div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalInviteStaff')">Cancel</button>
+        <button class="btn-primary" id="btnSubmitInviteStaff">Send invitation</button>
+      </div>
+    </div>
+  </div>
+
 <script>
   // ===============================================================
   // Config
@@ -660,6 +709,8 @@
   const API_BASE_URL = 'https://locke-operations-site-production.up.railway.app';
 
   let lockeUser = null;
+  let isFullAdmin = false;   // true locke_admin (not just locke_staff)
+  let internalOrg = null;    // the internal Locke org, loaded for Staff view
 
   // ===============================================================
   // Auth helpers
@@ -778,6 +829,10 @@
     document.getElementById('userEmail').textContent = email;
     document.getElementById('dropdownEmail').textContent = email;
     document.getElementById('avatar').textContent = initials;
+
+    // Full locke_admin gets the Staff management surface.
+    isFullAdmin = (me.memberships || []).some(m => m.role === 'locke_admin');
+    if (isFullAdmin) document.getElementById('btnManageStaff').style.display = '';
 
     // Show the first view.
     document.getElementById('loadingState').style.display = 'none';
@@ -918,6 +973,120 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Create';
+    }
+  });
+
+  // ===============================================================
+  // LOCKE STAFF (internal org management; full locke_admin only)
+  // ===============================================================
+  const STAFF_ROLE_LABELS = { locke_admin: 'Locke admin', locke_staff: 'Locke staff' };
+
+  document.getElementById('btnManageStaff').addEventListener('click', () => {
+    showView('staff');
+    loadStaff();
+  });
+
+  async function loadStaff() {
+    const el = document.getElementById('staffTableContainer');
+    const pendEl = document.getElementById('staffPendingContainer');
+    el.innerHTML = '<div class="loading">Loading...</div>';
+    pendEl.innerHTML = '';
+    try {
+      const { orgs } = await apiGet('/api/admin/orgs');
+      internalOrg = (orgs || []).find(o => o.is_internal);
+      if (!internalOrg) {
+        el.innerHTML = '<div class="empty"><div class="empty-sub">No internal Locke organization found.</div></div>';
+        return;
+      }
+      const data = await apiGet(`/api/admin/orgs/${internalOrg.id}`);
+      const members = data.members || [];
+      const pending = data.pending_invitations || [];
+      el.innerHTML = members.length
+        ? `<table class="table"><thead><tr><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>${members.map(staffMemberRow).join('')}</tbody></table>`
+        : '<div class="empty"><div class="empty-sub">No staff members.</div></div>';
+      pendEl.innerHTML = pending.length
+        ? `<table class="table"><thead><tr><th>Email</th><th>Clerk role</th><th></th></tr></thead><tbody>${pending.map(staffPendingRow).join('')}</tbody></table>`
+        : '<div class="empty"><div class="empty-sub">No pending invitations.</div></div>';
+    } catch (err) {
+      el.innerHTML = `<div class="empty"><div class="empty-sub">${escapeHtml(err.message)}</div></div>`;
+    }
+  }
+
+  function staffMemberRow(m) {
+    const locked = !!m.locked_at;
+    const status = locked ? 'suspended' : (m.status || '');
+    const badge = locked ? 'suspended' : (m.status === 'active' ? 'active' : 'archived');
+    const isSelf = lockeUser && String(m.id) === String(lockeUser.id);
+    const targetRole = m.role === 'locke_admin' ? 'locke_staff' : 'locke_admin';
+    const targetLabel = m.role === 'locke_admin' ? 'Make staff' : 'Make admin';
+    const actions = isSelf
+      ? '<span style="color:var(--concrete);">You</span>'
+      : `<button class="btn-link" onclick='toggleStaffRole("${m.id}","${targetRole}")'>${targetLabel}</button>
+         <button class="btn-link" onclick='toggleSuspendStaff("${m.id}",${locked})'>${locked ? 'Unsuspend' : 'Suspend'}</button>
+         <button class="btn-link" style="color:var(--oxide);" onclick='deleteStaff("${m.id}")'>Delete</button>`;
+    return `<tr>
+      <td>${escapeHtml(m.email)}${m.name ? `<div style="color:var(--concrete);font-size:12px;">${escapeHtml(m.name)}</div>` : ''}</td>
+      <td><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(STAFF_ROLE_LABELS[m.role] || m.role)}</code></td>
+      <td><span class="badge badge-${badge}">${escapeHtml(status)}</span></td>
+      <td style="text-align:right;white-space:nowrap;">${actions}</td>
+    </tr>`;
+  }
+
+  function staffPendingRow(p) {
+    return `<tr>
+      <td>${escapeHtml(p.email || '—')}</td>
+      <td><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(p.clerk_role || '—')}</code></td>
+      <td style="text-align:right;">${p.id ? `<button class="btn-link" style="color:var(--oxide);" onclick='revokeStaffInvite("${p.id}","${escapeHtml(p.email || '')}")'>Revoke</button>` : ''}</td>
+    </tr>`;
+  }
+
+  async function toggleStaffRole(userId, targetRole) {
+    if (!confirm(`Change this person's role to ${STAFF_ROLE_LABELS[targetRole]}?`)) return;
+    try { await apiPatch(`/api/admin/orgs/${internalOrg.id}/members/${userId}`, { role: targetRole }); flash('Role updated.'); loadStaff(); }
+    catch (err) { flash(`Failed: ${err.message}`, 'error'); }
+  }
+
+  async function toggleSuspendStaff(userId, locked) {
+    if (!confirm(locked ? 'Unsuspend this staff member?' : 'Suspend this staff member?')) return;
+    const verb = locked ? 'unsuspend' : 'suspend';
+    try { await apiPost(`/api/admin/orgs/${internalOrg.id}/members/${userId}/${verb}`, {}); flash('Done.'); loadStaff(); }
+    catch (err) { flash(`Failed: ${err.message}`, 'error'); }
+  }
+
+  async function deleteStaff(userId) {
+    if (!confirm('Delete this staff member from the system entirely? Their login is revoked and account removed. This cannot be undone.')) return;
+    try { await apiDelete(`/api/admin/orgs/${internalOrg.id}/members/${userId}`); flash('Deleted.'); loadStaff(); }
+    catch (err) { flash(`Failed: ${err.message}`, 'error'); }
+  }
+
+  async function revokeStaffInvite(invId, email) {
+    if (!confirm(`Revoke the invitation${email ? ' for ' + email : ''}?`)) return;
+    try { await apiDelete(`/api/admin/orgs/${internalOrg.id}/invitations/${invId}`); flash('Revoked.'); loadStaff(); }
+    catch (err) { flash(`Failed: ${err.message}`, 'error'); }
+  }
+
+  document.getElementById('btnInviteStaff').addEventListener('click', () => {
+    if (!internalOrg) { flash('Internal org not loaded yet.', 'error'); return; }
+    document.getElementById('staffInviteEmail').value = '';
+    document.getElementById('staffInviteRole').value = 'locke_staff';
+    openModal('modalInviteStaff');
+  });
+
+  document.getElementById('btnSubmitInviteStaff').addEventListener('click', async () => {
+    const email = document.getElementById('staffInviteEmail').value.trim();
+    const role = document.getElementById('staffInviteRole').value;
+    if (!email) { flash('Email is required.', 'error'); return; }
+    const btn = document.getElementById('btnSubmitInviteStaff');
+    btn.disabled = true; btn.textContent = 'Sending...';
+    try {
+      await apiPost(`/api/admin/orgs/${internalOrg.id}/invitations`, { email, role });
+      closeModal('modalInviteStaff');
+      flash('Invitation sent.');
+      loadStaff();
+    } catch (err) {
+      flash(`Failed: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Send invitation';
     }
   });
 
