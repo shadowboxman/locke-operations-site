@@ -1149,7 +1149,8 @@ async def admin_list_org_documents(
         rows = await conn.fetch(
             """
             SELECT d.id, d.category::text AS category, d.name, d.size_bytes,
-                   d.content_type, d.uploaded_at, d.source, u.email AS uploader_email
+                   d.content_type, d.uploaded_at, d.source, d.note,
+                   u.email AS uploader_email
               FROM documents d
               LEFT JOIN users u ON u.id = d.uploaded_by
              WHERE d.org_id = $1 AND d.deleted_at IS NULL
@@ -1169,6 +1170,7 @@ async def admin_list_org_documents(
                 "uploaded_at": r["uploaded_at"].isoformat(),
                 "source": r["source"],
                 "uploader_email": r["uploader_email"],
+                "note": r["note"],
             }
             for r in rows
         ],
@@ -1192,7 +1194,7 @@ async def list_documents(user: dict = Depends(get_current_user)):
         rows = await conn.fetch(
             """
             SELECT id, org_id, category::text AS category, name, size_bytes,
-                   content_type, uploaded_at, source, uploaded_by
+                   content_type, uploaded_at, source, uploaded_by, note
               FROM documents
              ORDER BY uploaded_at DESC
             """,
@@ -1213,6 +1215,7 @@ async def list_documents(user: dict = Depends(get_current_user)):
         if r["source"] == "client":
             shared.append({
                 **base,
+                "note": r["note"],
                 "mine": r["uploaded_by"] is not None
                         and str(r["uploaded_by"]) == str(user["id"]),
             })
@@ -1247,6 +1250,7 @@ class ClientConfirmRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     content_type: str = Field(min_length=1, max_length=255)
     size_bytes: int = Field(ge=1)
+    note: Optional[str] = Field(default=None, max_length=2000)
 
 
 async def _resolve_caller_upload_org(conn, user_id) -> dict:
@@ -1329,16 +1333,17 @@ async def client_confirm_upload(
     async with admin_conn() as conn:
         org = await _resolve_caller_upload_org(conn, user["id"])
         storage_key = r2.build_storage_key(org["id"], doc_uuid, version=1)
+        note = (payload.note or "").strip() or None
         row = await conn.fetchrow(
             """
             INSERT INTO documents
               (id, org_id, category, name, storage_key, version,
-               size_bytes, content_type, uploaded_by, source)
-            VALUES ($1, $2, NULL, $3, $4, 1, $5, $6, $7, 'client')
+               size_bytes, content_type, uploaded_by, source, note)
+            VALUES ($1, $2, NULL, $3, $4, 1, $5, $6, $7, 'client', $8)
             RETURNING id, uploaded_at
             """,
             doc_uuid, org["id"], payload.name, storage_key,
-            payload.size_bytes, payload.content_type, user["id"],
+            payload.size_bytes, payload.content_type, user["id"], note,
         )
 
     await _audit(
@@ -1353,6 +1358,7 @@ async def client_confirm_upload(
         "name": payload.name,
         "size_bytes": payload.size_bytes,
         "uploaded_at": row["uploaded_at"].isoformat(),
+        "note": note,
         "mine": True,
     }
 

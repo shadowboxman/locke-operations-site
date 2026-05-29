@@ -767,6 +767,28 @@
           Audit reports, runbooks, monthly reviews, and signed contracts. Everything we've written for your account. We upload new documents here as we produce them.
         </p>
 
+        <!-- Locke admin only: org selector + deliverable upload. Hidden for clients. -->
+        <div id="adminDocBar" style="display:none;border:1px solid var(--hairline);border-radius:8px;padding:14px 16px;margin-bottom:20px;background:rgba(0,0,0,0.015);">
+          <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--concrete);">Viewing org</span>
+              <select id="adminOrgSelect" style="padding:7px 10px;border:1px solid var(--hairline);border-radius:6px;font-size:13px;font-family:inherit;color:var(--navy);"></select>
+            </div>
+            <div style="flex:1;"></div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <select id="adminDocCategory" style="padding:7px 10px;border:1px solid var(--hairline);border-radius:6px;font-size:13px;font-family:inherit;color:var(--navy);">
+                <option value="audit_report">Audit report</option>
+                <option value="runbook">Runbook</option>
+                <option value="monthly_review">Monthly review</option>
+                <option value="contract">Contract</option>
+              </select>
+              <input type="file" id="adminDocFile" style="display:none">
+              <button class="btn-primary" type="button" id="adminDocUploadBtn">Upload deliverable</button>
+            </div>
+          </div>
+          <div id="adminDocStatus" style="font-size:13px;color:var(--concrete);margin-top:10px;min-height:1px;"></div>
+        </div>
+
         <div class="panel">
           <div class="doc-group">
             <div class="doc-group-header">
@@ -830,7 +852,10 @@
             <p class="greeting" style="padding: 16px 20px 0;">
               Upload documentation about your systems, templates, or the processes you'd like us to automate. Files you share here go to Locke and are visible to your team.
             </p>
-            <div style="padding: 16px 20px;">
+            <div style="padding: 16px 20px;" id="sharedUploadControl">
+              <input type="text" id="sharedNoteInput" maxlength="2000"
+                     placeholder="Optional note: what is this file? (e.g. our dispatch SOP)"
+                     style="display:block;width:100%;max-width:520px;margin-bottom:10px;padding:9px 12px;border:1px solid var(--hairline);border-radius:6px;font-size:13px;font-family:inherit;color:var(--navy);box-sizing:border-box;">
               <input type="file" id="sharedFileInput" style="display:none">
               <button class="btn-primary" type="button" id="sharedUploadBtn">Upload a file</button>
               <span id="sharedUploadStatus" style="margin-left:12px;font-size:13px;color:var(--concrete);"></span>
@@ -1064,12 +1089,15 @@
     if (isLockeAdmin) {
       document.getElementById('adminLink').style.display = 'inline-block';
       document.getElementById('dropdownAdminSection').style.display = 'block';
+      // Turn the Documents tab into an org-scoped admin surface: org selector
+      // + inline upload/delete. Sets adminSelectedOrgId before loadDocuments.
+      await initAdminDocs();
     }
 
     // Re-render issues now that we know the user's email (issues are scoped per-user).
     renderIssues();
 
-    // Load documents for this user's org (RLS-scoped server-side).
+    // Load documents (client: own org via RLS; admin: selected org via admin API).
     loadDocuments();
   })();
 
@@ -1103,47 +1131,130 @@
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  // Admin-mode state. When a Locke admin is signed in, the Documents tab is
+  // scoped to a selected org and gains inline upload/delete. Clients never
+  // enter this mode.
+  let lockeAdminMode = false;
+  let adminOrgs = [];
+  let adminSelectedOrgId = null;
+
+  async function initAdminDocs() {
+    lockeAdminMode = true;
+    try {
+      const token = await Clerk.session.getToken();
+      const res = await fetch(`${API_BASE_URL}/api/admin/orgs`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`/api/admin/orgs ${res.status}`);
+      const data = await res.json();
+      // Only client orgs are selectable here; the internal Locke org has no
+      // client-facing documents. (is_internal may be absent; treat missing as client.)
+      adminOrgs = (data.orgs || []).filter(o => o.is_internal !== true);
+    } catch (err) {
+      console.error('Failed to load orgs for admin doc bar:', err);
+      return;
+    }
+
+    const sel = document.getElementById('adminOrgSelect');
+    sel.innerHTML = adminOrgs.map(o =>
+      `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join('');
+    adminSelectedOrgId = adminOrgs.length ? adminOrgs[0].id : null;
+    sel.addEventListener('change', () => { adminSelectedOrgId = sel.value; loadDocuments(); });
+
+    document.getElementById('adminDocBar').style.display = '';
+    // Admins publish deliverables; the client "upload to Locke" control doesn't
+    // apply to them (it would upload as the admin, not the selected org).
+    const shareCtl = document.getElementById('sharedUploadControl');
+    if (shareCtl) shareCtl.style.display = 'none';
+
+    const upBtn = document.getElementById('adminDocUploadBtn');
+    const upFile = document.getElementById('adminDocFile');
+    upBtn.addEventListener('click', () => { if (adminSelectedOrgId) upFile.click(); });
+    upFile.addEventListener('change', () => {
+      if (upFile.files && upFile.files[0]) adminUploadDeliverable(upFile.files[0]);
+    });
+  }
+
   async function loadDocuments() {
     let data;
     try {
       const token = await Clerk.session.getToken();
-      const res = await fetch(`${API_BASE_URL}/api/documents`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error(`/api/documents returned ${res.status}`);
-      data = await res.json();
+      if (lockeAdminMode) {
+        if (!adminSelectedOrgId) { renderDocuments({ categories: {}, shared: [], total: 0 }, true); return; }
+        const res = await fetch(`${API_BASE_URL}/api/admin/orgs/${adminSelectedOrgId}/documents`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`admin docs ${res.status}`);
+        const raw = await res.json();
+        data = normalizeAdminDocs(raw.documents || []);
+      } else {
+        const res = await fetch(`${API_BASE_URL}/api/documents`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`/api/documents returned ${res.status}`);
+        data = await res.json();
+      }
     } catch (err) {
       console.error('Failed to load documents:', err);
-      return; // leave the per-category empty states in place
+      return;
     }
+    renderDocuments(data, lockeAdminMode);
+  }
 
+  // The admin per-org endpoint returns a flat list; reshape it to the same
+  // {categories, shared, total} the client endpoint returns.
+  function normalizeAdminDocs(docs) {
+    const categories = { audit_report: [], runbook: [], monthly_review: [], contract: [] };
+    const shared = [];
+    docs.forEach(d => {
+      const base = {
+        id: d.id, name: d.name, size_bytes: d.size_bytes,
+        content_type: d.content_type, uploaded_at: d.uploaded_at, note: d.note,
+      };
+      if (d.source === 'client') shared.push({ ...base, uploader_email: d.uploader_email });
+      else if (categories[d.category]) categories[d.category].push({ ...base, category: d.category });
+    });
+    return { categories, shared, total: docs.length };
+  }
+
+  function docRow(d, admin, isShared) {
+    const noteHtml = d.note
+      ? `<div style="font-weight:400;color:var(--concrete);font-size:12px;margin-top:3px;">${escapeHtml(d.note)}</div>`
+      : '';
+    let actions = `<a href="#" data-doc-id="${d.id}" onclick="return downloadDocument(event, this)">Download</a>`;
+    if (admin) {
+      actions += ` &middot; <a href="#" data-doc-id="${d.id}" onclick="return adminDeleteDoc(event, this)" style="color:var(--oxide);">Delete</a>`;
+    } else if (isShared && d.mine) {
+      actions += ` &middot; <a href="#" data-doc-id="${d.id}" onclick="return deleteSharedDocument(event, this)" style="color:var(--oxide);">Delete</a>`;
+    }
+    return `
+      <div class="doc-row">
+        <div class="doc-name">${escapeHtml(d.name)}${noteHtml}</div>
+        <div class="doc-meta">${fmtDate(d.uploaded_at)}</div>
+        <div class="doc-meta">${fmtBytes(d.size_bytes)}</div>
+        <div class="doc-download">${actions}</div>
+      </div>`;
+  }
+
+  function renderDocuments(data, admin) {
     document.getElementById('docTotalLabel').textContent = data.total || 0;
-
     for (const [category, els] of Object.entries(DOC_CATEGORIES)) {
       const docs = (data.categories && data.categories[category]) || [];
       const countEl = document.getElementById(els.count);
-      if (countEl) {
-        countEl.textContent = docs.length + (docs.length === 1 ? ' file' : ' files');
-      }
-      if (!docs.length) continue; // keep the existing empty-state copy
-
+      if (countEl) countEl.textContent = docs.length + (docs.length === 1 ? ' file' : ' files');
       const listEl = document.getElementById(els.list);
-      listEl.innerHTML = docs.map(d => `
-        <div class="doc-row">
-          <div class="doc-name">${escapeHtml(d.name)}</div>
-          <div class="doc-meta">${fmtDate(d.uploaded_at)}</div>
-          <div class="doc-meta">${fmtBytes(d.size_bytes)}</div>
-          <div class="doc-download">
-            <a href="#" data-doc-id="${d.id}" onclick="return downloadDocument(event, this)">Download</a>
-          </div>
-        </div>`).join('');
+      if (!docs.length) {
+        // In admin mode, reset to a neutral empty line (we may be switching orgs);
+        // in client mode, leave the marketing empty-state copy untouched.
+        if (admin) listEl.innerHTML = `<div class="empty"><div class="empty-sub">No files in this category.</div></div>`;
+        continue;
+      }
+      listEl.innerHTML = docs.map(d => docRow(d, admin, false)).join('');
     }
-
-    // "Shared with Locke" — client uploads, kept separate from deliverables.
-    renderShared((data.shared) || []);
+    renderShared(data.shared || [], admin);
   }
 
-  function renderShared(items) {
+  function renderShared(items, admin) {
     const countEl = document.getElementById('sharedCount');
     if (countEl) countEl.textContent = items.length + (items.length === 1 ? ' file' : ' files');
     const el = document.getElementById('sharedList');
@@ -1151,24 +1262,75 @@
       el.innerHTML = `
         <div class="empty">
           <div class="empty-title">Nothing shared yet</div>
-          <div class="empty-sub">Anything you upload here is sent to Locke and visible to your team.</div>
+          <div class="empty-sub">${admin ? 'This client has not shared any files yet.' : 'Anything you upload here is sent to Locke and visible to your team.'}</div>
         </div>`;
       return;
     }
-    el.innerHTML = items.map(d => `
-      <div class="doc-row">
-        <div class="doc-name">${escapeHtml(d.name)}</div>
-        <div class="doc-meta">${fmtDate(d.uploaded_at)}</div>
-        <div class="doc-meta">${fmtBytes(d.size_bytes)}</div>
-        <div class="doc-download">
-          <a href="#" data-doc-id="${d.id}" onclick="return downloadDocument(event, this)">Download</a>${d.mine ? ` &middot; <a href="#" data-doc-id="${d.id}" onclick="return deleteSharedDocument(event, this)" style="color:var(--oxide);">Delete</a>` : ''}
-        </div>
-      </div>`).join('');
+    el.innerHTML = items.map(d => docRow(d, admin, true)).join('');
+  }
+
+  async function adminUploadDeliverable(file) {
+    if (!adminSelectedOrgId) return;
+    const status = document.getElementById('adminDocStatus');
+    const btn = document.getElementById('adminDocUploadBtn');
+    const category = document.getElementById('adminDocCategory').value;
+    const contentType = file.type || 'application/octet-stream';
+    btn.disabled = true;
+    status.textContent = `Uploading ${file.name}...`;
+    try {
+      const token = await Clerk.session.getToken();
+      const pres = await fetch(`${API_BASE_URL}/api/admin/orgs/${adminSelectedOrgId}/documents/presign`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: file.name, category, content_type: contentType, size_bytes: file.size }),
+      });
+      if (!pres.ok) throw new Error(`presign ${pres.status}`);
+      const { upload_url, doc_id } = await pres.json();
+      const put = await fetch(upload_url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+      if (!put.ok) throw new Error(`upload ${put.status}`);
+      const conf = await fetch(`${API_BASE_URL}/api/admin/orgs/${adminSelectedOrgId}/documents/confirm`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doc_id, name: file.name, category, content_type: contentType, size_bytes: file.size }),
+      });
+      if (!conf.ok) throw new Error(`confirm ${conf.status}`);
+      status.textContent = 'Uploaded.';
+      await loadDocuments();
+      setTimeout(() => { status.textContent = ''; }, 3000);
+    } catch (err) {
+      console.error('Admin upload failed:', err);
+      status.textContent = 'Upload failed. Please try again.';
+    } finally {
+      btn.disabled = false;
+      document.getElementById('adminDocFile').value = '';
+    }
+  }
+
+  async function adminDeleteDoc(event, link) {
+    event.preventDefault();
+    const id = link.getAttribute('data-doc-id');
+    if (!confirm('Delete this file? The client will no longer see it.')) return false;
+    link.style.pointerEvents = 'none';
+    try {
+      const token = await Clerk.session.getToken();
+      const res = await fetch(`${API_BASE_URL}/api/admin/documents/${id}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`delete ${res.status}`);
+      await loadDocuments();
+    } catch (err) {
+      console.error('Admin delete failed:', err);
+      alert('Could not delete that file. Please try again.');
+      link.style.pointerEvents = '';
+    }
+    return false;
   }
 
   async function uploadSharedFile(file) {
     const status = document.getElementById('sharedUploadStatus');
     const btn = document.getElementById('sharedUploadBtn');
+    const noteInput = document.getElementById('sharedNoteInput');
+    const note = (noteInput.value || '').trim();
     const contentType = file.type || 'application/octet-stream';
     btn.disabled = true;
     status.textContent = `Uploading ${file.name}...`;
@@ -1191,10 +1353,11 @@
       const conf = await fetch(`${API_BASE_URL}/api/documents/confirm`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ doc_id, name: file.name, content_type: contentType, size_bytes: file.size }),
+        body: JSON.stringify({ doc_id, name: file.name, content_type: contentType, size_bytes: file.size, note: note || null }),
       });
       if (!conf.ok) throw new Error(`confirm ${conf.status}`);
       status.textContent = 'Uploaded.';
+      noteInput.value = '';
       await loadDocuments();
       setTimeout(() => { status.textContent = ''; }, 3000);
     } catch (err) {

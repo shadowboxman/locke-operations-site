@@ -46,3 +46,10 @@ ALTER TABLE documents
 CREATE INDEX documents_org_source_idx
   ON documents (org_id, source)
   WHERE deleted_at IS NULL;
+
+-- 5. Optional free-text note a client can attach to an upload, in their own
+--    words ("what is this"). Higher signal than a forced category for intake;
+--    nullable and unconstrained. Applies mainly to client uploads but the
+--    column is general.
+ALTER TABLE documents
+  ADD COLUMN note text;

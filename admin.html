@@ -1307,7 +1307,7 @@
         <tbody>
           ${docs.map(d => `
             <tr>
-              <td>${escapeHtml(d.name)}</td>
+              <td>${escapeHtml(d.name)}${d.note ? `<div style="color:var(--concrete);font-size:12px;margin-top:3px;">${escapeHtml(d.note)}</div>` : ''}</td>
               <td>${d.source === 'client'
                     ? `Client${d.uploader_email ? ` <span style="color:var(--concrete);">(${escapeHtml(d.uploader_email)})</span>` : ''}`
                     : 'Locke'}</td>
