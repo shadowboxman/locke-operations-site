@@ -647,6 +647,12 @@
     <!-- SIDEBAR -->
     <aside class="sidebar">
       <div>
+        <!-- Locke admin only: global org context. Switching re-scopes the whole portal. -->
+        <div id="adminOrgSwitcher" style="display:none;padding:0 16px 18px;margin-bottom:10px;border-bottom:1px solid var(--hairline);">
+          <div class="sidebar-group" style="padding:0 0 8px;margin-top:0;">Organization</div>
+          <select id="navOrgSelect" class="form-select" style="font-size:13px;padding:8px 10px;"></select>
+        </div>
+
         <div class="sidebar-group">Workspace</div>
         <div class="nav-item active" data-section="overview" onclick="goTo('overview')">
           <svg class="nav-icon" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -767,14 +773,12 @@
           Audit reports, runbooks, monthly reviews, and signed contracts. Everything we've written for your account. We upload new documents here as we produce them.
         </p>
 
-        <!-- Locke admin only: org selector + deliverable upload. Hidden for clients. -->
+        <!-- Locke admin only: publish a deliverable to the org selected in the sidebar. -->
         <div id="adminDocBar" style="display:none;border:1px solid var(--hairline-strong);background:var(--bone);padding:16px;margin-bottom:20px;">
           <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;">
-            <div class="form-field" style="flex:0 0 auto;">
-              <label class="form-label" for="adminOrgSelect">Viewing org</label>
-              <select id="adminOrgSelect" class="form-select" style="width:auto;min-width:220px;"></select>
+            <div class="form-help" style="flex:1 1 auto;margin:0;align-self:center;">
+              Publishing to <strong id="adminDocBarOrg" style="color:var(--navy);">the selected organization</strong>.
             </div>
-            <div style="flex:1;"></div>
             <div class="form-field" style="flex:0 0 auto;">
               <label class="form-label" for="adminDocCategory">Category</label>
               <select id="adminDocCategory" class="form-select" style="width:auto;min-width:170px;">
@@ -986,9 +990,11 @@
 
         <div class="panel">
           <div class="panel-header"><div class="panel-title">Team</div></div>
-          <div class="empty">
-            <div class="empty-title">Just you</div>
-            <div class="empty-sub">Adding teammates will be available when multi-user access is wired up. For now, send invites through the Issues page.</div>
+          <div id="teamPanelBody">
+            <div class="empty">
+              <div class="empty-title">Just you</div>
+              <div class="empty-sub">Adding teammates will be available when multi-user access is wired up. For now, send invites through the Issues page.</div>
+            </div>
           </div>
         </div>
       </section>
@@ -1090,9 +1096,10 @@
     if (isLockeAdmin) {
       document.getElementById('adminLink').style.display = 'inline-block';
       document.getElementById('dropdownAdminSection').style.display = 'block';
-      // Turn the Documents tab into an org-scoped admin surface: org selector
-      // + inline upload/delete. Sets adminSelectedOrgId before loadDocuments.
-      await initAdminDocs();
+      // Make the whole portal org-scoped for admins: sidebar org switcher sets
+      // a global selected org that every org-aware surface reads. Sets
+      // adminSelectedOrgId before loadDocuments runs below.
+      await initAdminPortal();
     }
 
     // Re-render issues now that we know the user's email (issues are scoped per-user).
@@ -1100,6 +1107,9 @@
 
     // Load documents (client: own org via RLS; admin: selected org via admin API).
     loadDocuments();
+
+    // Team panel: admin sees the selected org's members; client sees the placeholder.
+    renderTeam();
   })();
 
   // === Documents ===
@@ -1109,6 +1119,10 @@
     runbook:        { list: 'runbookList',  count: 'runbookCount' },
     monthly_review: { list: 'reviewList',   count: 'reviewCount' },
     contract:       { list: 'contractList', count: 'contractCount' },
+  };
+  const DOC_CATEGORY_LABELS = {
+    audit_report: 'Audit report', runbook: 'Runbook',
+    monthly_review: 'Monthly review', contract: 'Contract',
   };
 
   function fmtBytes(n) {
@@ -1139,7 +1153,7 @@
   let adminOrgs = [];
   let adminSelectedOrgId = null;
 
-  async function initAdminDocs() {
+  async function initAdminPortal() {
     lockeAdminMode = true;
     try {
       const token = await Clerk.session.getToken();
@@ -1148,23 +1162,25 @@
       });
       if (!res.ok) throw new Error(`/api/admin/orgs ${res.status}`);
       const data = await res.json();
-      // Only client orgs are selectable here; the internal Locke org has no
-      // client-facing documents. (is_internal may be absent; treat missing as client.)
+      // Only client orgs are selectable; the internal Locke org has no
+      // client-facing portal. (is_internal may be absent; treat missing as client.)
       adminOrgs = (data.orgs || []).filter(o => o.is_internal !== true);
     } catch (err) {
-      console.error('Failed to load orgs for admin doc bar:', err);
+      console.error('Failed to load orgs for admin portal:', err);
       return;
     }
 
-    const sel = document.getElementById('adminOrgSelect');
-    sel.innerHTML = adminOrgs.map(o =>
+    // Global org switcher in the sidebar. Switching re-scopes the whole portal.
+    const navSel = document.getElementById('navOrgSelect');
+    navSel.innerHTML = adminOrgs.map(o =>
       `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join('');
     adminSelectedOrgId = adminOrgs.length ? adminOrgs[0].id : null;
-    sel.addEventListener('change', () => { adminSelectedOrgId = sel.value; loadDocuments(); });
+    navSel.addEventListener('change', () => { adminSelectedOrgId = navSel.value; onOrgChange(); });
+    document.getElementById('adminOrgSwitcher').style.display = adminOrgs.length ? 'block' : 'none';
 
+    // Documents tab admin affordances: deliverable upload bar shown, client
+    // "upload to Locke" control hidden (it would upload as the admin, not the org).
     document.getElementById('adminDocBar').style.display = '';
-    // Admins publish deliverables; the client "upload to Locke" control doesn't
-    // apply to them (it would upload as the admin, not the selected org).
     const shareCtl = document.getElementById('sharedUploadControl');
     if (shareCtl) shareCtl.style.display = 'none';
 
@@ -1174,6 +1190,36 @@
     upFile.addEventListener('change', () => {
       if (upFile.files && upFile.files[0]) adminUploadDeliverable(upFile.files[0]);
     });
+
+    applyAdminOrgLabel();  // reflect the initial org in the portal chrome
+  }
+
+  // Name of the currently selected org, for labels.
+  function adminSelectedOrgName() {
+    const org = adminOrgs.find(o => o.id === adminSelectedOrgId);
+    return org ? org.name : '—';
+  }
+
+  // Reflect the selected org everywhere the portal shows the org, so switching
+  // visibly re-scopes the whole portal, not just the Documents tab.
+  function applyAdminOrgLabel() {
+    const name = adminSelectedOrgName();
+    ['accountLabel', 'profileAccount'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = name;
+    });
+    const barOrg = document.getElementById('adminDocBarOrg');
+    if (barOrg) barOrg.textContent = name;
+  }
+
+  // Central handler when the global org context changes. Re-scopes every
+  // org-aware surface. Today that's labels + Documents; Overview/Issues/Team
+  // hook in here as they become org-aware.
+  function onOrgChange() {
+    applyAdminOrgLabel();
+    loadDocuments();   // re-scopes Documents + Overview recent activity + doc badge
+    renderIssues();    // refresh the admin placeholder/counts
+    renderTeam();      // selected org's members
   }
 
   async function loadDocuments() {
@@ -1200,6 +1246,87 @@
       return;
     }
     renderDocuments(data, lockeAdminMode);
+
+    // Sidebar Documents badge reflects the (selected) org's total.
+    const docCountEl = document.getElementById('docCount');
+    if (docCountEl) docCountEl.textContent = data.total || 0;
+
+    // In admin mode, the Overview "recent activity" is org-scoped documents
+    // (Issues has no per-org backend). Client mode leaves recent to renderIssues.
+    if (lockeAdminMode) renderRecentDocs(data);
+  }
+
+  // Overview recent-activity list, admin mode: the selected org's newest files.
+  function renderRecentDocs(data) {
+    const el = document.getElementById('recentActivity');
+    if (!el) return;
+    const all = [];
+    for (const cat of Object.keys(data.categories || {})) {
+      (data.categories[cat] || []).forEach(d => all.push({ ...d, label: (DOC_CATEGORY_LABELS[cat] || cat) }));
+    }
+    (data.shared || []).forEach(d => all.push({ ...d, label: 'Shared by client' }));
+    all.sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at));
+    const recent = all.slice(0, 5);
+    if (!recent.length) {
+      el.innerHTML = `
+        <div class="empty">
+          <div class="empty-title">Nothing yet</div>
+          <div class="empty-sub">Documents for this organization will appear here.</div>
+        </div>`;
+      return;
+    }
+    el.innerHTML = recent.map(d => `
+      <div class="issue-row">
+        <div class="issue-subject">${escapeHtml(d.name)}</div>
+        <div class="issue-type">${escapeHtml(d.label)}</div>
+        <div class="issue-date">${fmtDate(d.uploaded_at)}</div>
+        <div class="issue-status"></div>
+      </div>`).join('');
+  }
+
+  // Settings > Team panel. Admin: the selected org's members (read-only here;
+  // invite/manage is a later step). Client: unchanged placeholder.
+  async function renderTeam() {
+    const body = document.getElementById('teamPanelBody');
+    if (!body) return;
+    if (!lockeAdminMode) return; // leave the client "Just you" placeholder as-is
+
+    if (!adminSelectedOrgId) {
+      body.innerHTML = `<div class="empty"><div class="empty-sub">No organization selected.</div></div>`;
+      return;
+    }
+    body.innerHTML = `<div class="empty"><div class="empty-sub">Loading team...</div></div>`;
+    let members;
+    try {
+      const token = await Clerk.session.getToken();
+      const res = await fetch(`${API_BASE_URL}/api/admin/orgs/${adminSelectedOrgId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`org detail ${res.status}`);
+      const data = await res.json();
+      members = data.members || [];
+    } catch (err) {
+      console.error('Failed to load team:', err);
+      body.innerHTML = `<div class="empty"><div class="empty-sub">Could not load the team for this organization.</div></div>`;
+      return;
+    }
+    if (!members.length) {
+      body.innerHTML = `<div class="empty"><div class="empty-title">No members yet</div><div class="empty-sub">This organization has no active members.</div></div>`;
+      return;
+    }
+    body.innerHTML = `
+      <div class="panel-body" style="padding-top:4px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px 16px;font-size:13px;align-items:center;">
+          ${members.map(m => {
+            const locked = !!m.locked_at;
+            const status = locked ? 'suspended' : (m.status || '');
+            return `
+              <div style="color:var(--navy);">${escapeHtml(m.email)}</div>
+              <div style="color:var(--concrete);font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(m.role || '')}</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--concrete);">${escapeHtml(status)}</div>`;
+          }).join('')}
+        </div>
+      </div>`;
   }
 
   // The admin per-org endpoint returns a flat list; reshape it to the same
@@ -1520,8 +1647,25 @@
   };
 
   function renderIssues() {
-    const issues = loadIssues();
     const listEl = document.getElementById('issueList');
+
+    // Admin mode: issues are a per-user localStorage mock with no backend, so
+    // they are NOT org-scoped. Showing the admin's personal mock against a
+    // client org would be misleading. Render an honest placeholder instead.
+    if (lockeAdminMode) {
+      document.getElementById('issueCount').textContent = 0;
+      document.getElementById('issueOpenLabel').textContent = 0;
+      document.getElementById('issueResolvedLabel').textContent = 0;
+      listEl.innerHTML = `
+        <div class="empty">
+          <div class="empty-title">Not available in admin view</div>
+          <div class="empty-sub">Issue reporting is a client-facing feature and isn't yet backed per-organization. It will appear here once the issues backend ships.</div>
+        </div>`;
+      // Recent activity in admin mode is driven by documents (see loadDocuments).
+      return;
+    }
+
+    const issues = loadIssues();
     const open = issues.filter(i => i.status !== 'resolved').length;
     const resolved = issues.filter(i => i.status === 'resolved').length;
     document.getElementById('issueCount').textContent = open;
