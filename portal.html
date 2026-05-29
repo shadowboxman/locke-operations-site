@@ -526,6 +526,62 @@
     background: var(--concrete);
     cursor: not-allowed;
   }
+  button.btn-secondary {
+    padding: 12px 22px;
+    background: transparent;
+    color: var(--navy);
+    border: 1px solid var(--hairline-strong);
+    border-radius: 0;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+  button.btn-secondary:hover { border-color: var(--navy); }
+
+  /* Branded confirm/notice modal (replaces native confirm/alert) */
+  .ui-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 35, 50, 0.55);
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    z-index: 100;
+    padding: 80px 16px 16px;
+  }
+  .ui-modal-backdrop.open { display: flex; }
+  .ui-modal {
+    background: var(--bone);
+    border: 1px solid var(--navy);
+    width: 100%;
+    max-width: 440px;
+  }
+  .ui-modal-title {
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--hairline-strong);
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--navy);
+  }
+  .ui-modal-message {
+    padding: 22px;
+    color: var(--navy);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .ui-modal-actions {
+    padding: 16px 22px;
+    border-top: 1px solid var(--hairline);
+    background: var(--surface);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
 
   /* ISSUE LIST */
   .issue-row {
@@ -1028,9 +1084,60 @@
 
   </div>
 
+  <!-- Branded confirm/notice modal (replaces native confirm/alert) -->
+  <div class="ui-modal-backdrop" id="uiModal">
+    <div class="ui-modal" role="dialog" aria-modal="true">
+      <div class="ui-modal-title" id="uiModalTitle">Confirm</div>
+      <div class="ui-modal-message" id="uiModalMessage"></div>
+      <div class="ui-modal-actions">
+        <button class="btn-secondary" type="button" id="uiModalCancel">Cancel</button>
+        <button class="btn-primary" type="button" id="uiModalConfirm">Confirm</button>
+      </div>
+    </div>
+  </div>
+
 <script>
   // === Config ===
   const API_BASE_URL = 'https://locke-operations-site-production.up.railway.app';
+
+  // === Branded confirm / notice modal (replaces native confirm/alert) ===
+  let _uiResolve = null;
+  function uiConfirm(message, opts) {
+    opts = opts || {};
+    return _uiOpen({ title: opts.title || 'Please confirm', message,
+      confirmLabel: opts.confirmLabel || 'Confirm', showCancel: true });
+  }
+  function uiAlert(message, opts) {
+    opts = opts || {};
+    return _uiOpen({ title: opts.title || 'Heads up', message,
+      confirmLabel: opts.confirmLabel || 'OK', showCancel: false });
+  }
+  function _uiOpen(o) {
+    return new Promise(resolve => {
+      document.getElementById('uiModalTitle').textContent = o.title;
+      document.getElementById('uiModalMessage').textContent = o.message || '';
+      const confirmBtn = document.getElementById('uiModalConfirm');
+      const cancelBtn = document.getElementById('uiModalCancel');
+      confirmBtn.textContent = o.confirmLabel;
+      cancelBtn.style.display = o.showCancel ? '' : 'none';
+      _uiResolve = resolve;
+      document.getElementById('uiModal').classList.add('open');
+      confirmBtn.focus();
+    });
+  }
+  function _uiClose(result) {
+    document.getElementById('uiModal').classList.remove('open');
+    const r = _uiResolve; _uiResolve = null;
+    if (r) r(result);
+  }
+  document.getElementById('uiModalConfirm').addEventListener('click', () => _uiClose(true));
+  document.getElementById('uiModalCancel').addEventListener('click', () => _uiClose(false));
+  document.getElementById('uiModal').addEventListener('click', (e) => {
+    if (e.target.id === 'uiModal') _uiClose(false);  // backdrop click = cancel
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('uiModal').classList.contains('open')) _uiClose(false);
+  });
 
   // Globals populated after Clerk loads + /api/me responds.
   // Other code paths (issues form, dropdown) read these.
@@ -1480,7 +1587,7 @@
       await renderTeam();
     } catch (err) {
       console.error('Role update failed:', err);
-      alert('Could not change the role. ' + cleanErr(err));
+      await uiAlert('Could not change the role. ' + cleanErr(err));
     }
     return false;
   }
@@ -1494,13 +1601,13 @@
   async function portalToggleSuspend(event, id, locked) {
     event.preventDefault();
     const verb = locked ? 'unsuspend' : 'suspend';
-    if (!confirm(`${locked ? 'Unsuspend' : 'Suspend'} this member?`)) return false;
+    if (!(await uiConfirm(`${locked ? 'Unsuspend' : 'Suspend'} this member?`, { title: locked ? 'Unsuspend member' : 'Suspend member', confirmLabel: locked ? 'Unsuspend' : 'Suspend' }))) return false;
     try {
       await adminApi('POST', `/api/admin/orgs/${adminSelectedOrgId}/members/${id}/${verb}`, {});
       await renderTeam();
     } catch (err) {
       console.error('Suspend toggle failed:', err);
-      alert(`Could not ${verb} the member. ` + cleanErr(err));
+      await uiAlert(`Could not ${verb} the member. ` + cleanErr(err));
     }
     return false;
   }
@@ -1512,26 +1619,26 @@
     // Full system delete: removes the Clerk login + the user record, not just
     // the org membership. Client users belong to one org, so this is the same
     // thing for them; only the superadmin spans multiple orgs.
-    if (!confirm(`Delete ${who} from the system entirely? Their login is revoked and their account removed. This cannot be undone.`)) return false;
+    if (!(await uiConfirm(`Delete ${who} from the system entirely? Their login is revoked and their account removed. This cannot be undone.`, { title: 'Delete user', confirmLabel: 'Delete' }))) return false;
     try {
       await adminApi('DELETE', `/api/admin/orgs/${adminSelectedOrgId}/members/${id}`);
       await renderTeam();
     } catch (err) {
       console.error('Delete user failed:', err);
-      alert('Could not delete the user. ' + cleanErr(err));
+      await uiAlert('Could not delete the user. ' + cleanErr(err));
     }
     return false;
   }
 
   async function portalRevokeInvitation(event, invId, email) {
     event.preventDefault();
-    if (!confirm(`Revoke the invitation${email ? ' for ' + email : ''}?`)) return false;
+    if (!(await uiConfirm(`Revoke the invitation${email ? ' for ' + email : ''}?`, { title: 'Revoke invitation', confirmLabel: 'Revoke' }))) return false;
     try {
       await adminApi('DELETE', `/api/admin/orgs/${adminSelectedOrgId}/invitations/${invId}`);
       await renderTeam();
     } catch (err) {
       console.error('Revoke failed:', err);
-      alert('Could not revoke the invitation. ' + cleanErr(err));
+      await uiAlert('Could not revoke the invitation. ' + cleanErr(err));
     }
     return false;
   }
@@ -1620,7 +1727,7 @@
   async function orgSetStatus(event, newStatus) {
     event.preventDefault();
     const labels = { active: 'unsuspend', suspended: 'suspend', archived: 'archive' };
-    if (!confirm(`Are you sure you want to ${labels[newStatus] || 'update'} this organization?`)) return false;
+    if (!(await uiConfirm(`Are you sure you want to ${labels[newStatus] || 'update'} this organization?`, { title: 'Update organization', confirmLabel: (labels[newStatus] || 'update').replace(/^./, c => c.toUpperCase()) }))) return false;
     try {
       await adminApi('PATCH', `/api/admin/orgs/${adminSelectedOrgId}`, { status: newStatus });
       const org = selectedOrg();
@@ -1638,7 +1745,7 @@
     event.preventDefault();
     const org = selectedOrg();
     if (!org) return false;
-    if (!confirm(`Permanently delete "${org.name}"? This cannot be undone. (Orgs with documents are blocked; archive instead.)`)) return false;
+    if (!(await uiConfirm(`Permanently delete "${org.name}"? This cannot be undone. (Orgs with documents are blocked; archive instead.)`, { title: 'Delete organization', confirmLabel: 'Delete' }))) return false;
     try {
       await adminApi('DELETE', `/api/admin/orgs/${adminSelectedOrgId}`);
       // Drop it from local state and re-point the whole portal at another org.
@@ -1776,7 +1883,7 @@
   async function adminDeleteDoc(event, link) {
     event.preventDefault();
     const id = link.getAttribute('data-doc-id');
-    if (!confirm('Delete this file? The client will no longer see it.')) return false;
+    if (!(await uiConfirm('Delete this file? The client will no longer see it.', { title: 'Delete document', confirmLabel: 'Delete' }))) return false;
     link.style.pointerEvents = 'none';
     try {
       const token = await Clerk.session.getToken();
@@ -1787,7 +1894,7 @@
       await loadDocuments();
     } catch (err) {
       console.error('Admin delete failed:', err);
-      alert('Could not delete that file. Please try again.');
+      await uiAlert('Could not delete that file. Please try again.');
       link.style.pointerEvents = '';
     }
     return false;
@@ -1839,7 +1946,7 @@
   async function deleteSharedDocument(event, link) {
     event.preventDefault();
     const id = link.getAttribute('data-doc-id');
-    if (!confirm('Remove this file? Locke will no longer see it.')) return false;
+    if (!(await uiConfirm('Remove this file? Locke will no longer see it.', { title: 'Remove file', confirmLabel: 'Remove' }))) return false;
     link.style.pointerEvents = 'none';
     try {
       const token = await Clerk.session.getToken();
@@ -1850,7 +1957,7 @@
       await loadDocuments();
     } catch (err) {
       console.error('Delete failed:', err);
-      alert('Could not remove that file. Please try again.');
+      await uiAlert('Could not remove that file. Please try again.');
       link.style.pointerEvents = '';
     }
     return false;
@@ -1892,7 +1999,7 @@
       await loadDocuments();
     } catch (err) {
       console.error('Description update failed:', err);
-      alert('Could not save the description. Please try again.');
+      await uiAlert('Could not save the description. Please try again.');
       inp.disabled = false;
     }
     return false;
@@ -1932,7 +2039,7 @@
       window.location.href = url;
     } catch (err) {
       console.error('Download failed:', err);
-      alert('That download could not be started. Please try again.');
+      await uiAlert('That download could not be started. Please try again.');
     } finally {
       link.textContent = original;
       link.style.pointerEvents = '';
