@@ -1302,13 +1302,16 @@
     el.innerHTML = `
       <table class="table">
         <thead>
-          <tr><th>Name</th><th>Category</th><th>Size</th><th>Uploaded</th><th></th></tr>
+          <tr><th>Name</th><th>Source</th><th>Category</th><th>Size</th><th>Uploaded</th><th></th></tr>
         </thead>
         <tbody>
           ${docs.map(d => `
             <tr>
               <td>${escapeHtml(d.name)}</td>
-              <td>${escapeHtml(DOC_CATEGORY_LABELS[d.category] || d.category)}</td>
+              <td>${d.source === 'client'
+                    ? `Client${d.uploader_email ? ` <span style="color:var(--concrete);">(${escapeHtml(d.uploader_email)})</span>` : ''}`
+                    : 'Locke'}</td>
+              <td>${d.source === 'client' ? '—' : escapeHtml(DOC_CATEGORY_LABELS[d.category] || d.category || '—')}</td>
               <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${fmtBytes(d.size_bytes)}</td>
               <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${fmtDate(d.uploaded_at)}</td>
               <td style="text-align:right;">

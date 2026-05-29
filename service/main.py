@@ -1148,11 +1148,12 @@ async def admin_list_org_documents(
         org = await _load_active_org(conn, org_id)
         rows = await conn.fetch(
             """
-            SELECT id, category::text AS category, name, size_bytes,
-                   content_type, uploaded_at
-              FROM documents
-             WHERE org_id = $1 AND deleted_at IS NULL
-             ORDER BY uploaded_at DESC
+            SELECT d.id, d.category::text AS category, d.name, d.size_bytes,
+                   d.content_type, d.uploaded_at, d.source, u.email AS uploader_email
+              FROM documents d
+              LEFT JOIN users u ON u.id = d.uploaded_by
+             WHERE d.org_id = $1 AND d.deleted_at IS NULL
+             ORDER BY d.uploaded_at DESC
             """,
             org["id"],
         )
@@ -1166,6 +1167,8 @@ async def admin_list_org_documents(
                 "size_bytes": r["size_bytes"],
                 "content_type": r["content_type"],
                 "uploaded_at": r["uploaded_at"].isoformat(),
+                "source": r["source"],
+                "uploader_email": r["uploader_email"],
             }
             for r in rows
         ],
@@ -1174,16 +1177,22 @@ async def admin_list_org_documents(
 
 @app.get("/api/documents")
 async def list_documents(user: dict = Depends(get_current_user)):
-    """List the caller's documents, grouped by category.
+    """List the caller's documents.
 
-    Reads through user_conn so RLS scopes rows to orgs the caller can see and
-    hides soft-deleted documents. No org_id param: it's derived from the session.
+    Two distinct kinds, kept separate so a client upload can never look like a
+    Locke deliverable:
+      - categories: Locke deliverables (source='locke'), grouped by category.
+      - shared:     client uploads (source='client') for the caller's org, each
+                    flagged `mine` if this user uploaded it (drives delete UI).
+
+    Reads through user_conn so RLS scopes rows to the caller's org and hides
+    soft-deleted rows. No org_id param: it's derived from the session.
     """
     async with user_conn(user["id"]) as conn:
         rows = await conn.fetch(
             """
-            SELECT id, org_id, category::text AS category, name,
-                   size_bytes, content_type, uploaded_at
+            SELECT id, org_id, category::text AS category, name, size_bytes,
+                   content_type, uploaded_at, source, uploaded_by
               FROM documents
              ORDER BY uploaded_at DESC
             """,
@@ -1192,17 +1201,203 @@ async def list_documents(user: dict = Depends(get_current_user)):
     grouped: dict[str, list[dict]] = {
         "audit_report": [], "runbook": [], "monthly_review": [], "contract": [],
     }
+    shared: list[dict] = []
     for r in rows:
-        grouped.setdefault(r["category"], []).append({
+        base = {
             "id": str(r["id"]),
             "name": r["name"],
-            "category": r["category"],
             "size_bytes": r["size_bytes"],
             "content_type": r["content_type"],
             "uploaded_at": r["uploaded_at"].isoformat(),
-        })
+        }
+        if r["source"] == "client":
+            shared.append({
+                **base,
+                "mine": r["uploaded_by"] is not None
+                        and str(r["uploaded_by"]) == str(user["id"]),
+            })
+        elif r["category"] in grouped:
+            grouped[r["category"]].append({**base, "category": r["category"]})
 
-    return {"categories": grouped, "total": len(rows)}
+    return {"categories": grouped, "shared": shared, "total": len(rows)}
+
+
+# ---------------------------------------------------------------
+# Client-side uploads ("Shared with Locke")
+#
+# Clients upload files TO Locke (system docs, templates, the processes we
+# automate). These are source='client', carry no Locke category, and live in
+# a separate portal section. Security model:
+#   - org is derived from the caller's own active membership, never from input,
+#     so a client cannot write into another org's namespace;
+#   - rows are tagged source='client' and can never overwrite or impersonate a
+#     Locke deliverable (DB CHECK enforces category IS NULL for client rows);
+#   - a client may soft-delete only files they uploaded (source='client' AND
+#     uploaded_by = caller); Locke deliverables are untouchable from here.
+# ---------------------------------------------------------------
+
+class ClientPresignRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(min_length=1, max_length=255)
+    size_bytes: int = Field(ge=1)
+
+
+class ClientConfirmRequest(BaseModel):
+    doc_id: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(min_length=1, max_length=255)
+    size_bytes: int = Field(ge=1)
+
+
+async def _resolve_caller_upload_org(conn, user_id) -> dict:
+    """Determine which org a client upload belongs to, from the caller's own
+    active memberships. Returns the org row or raises.
+
+    Unambiguous for clients (one org). If a caller belongs to several orgs
+    (e.g. Locke staff), refuse rather than guess; staff upload via /admin.
+    """
+    rows = await conn.fetch(
+        """
+        SELECT o.id, o.status::text AS status, o.is_internal
+          FROM memberships m
+          JOIN organizations o ON o.id = m.org_id
+         WHERE m.user_id = $1 AND m.status = 'active'
+        """,
+        user_id,
+    )
+    if not rows:
+        raise HTTPException(status_code=400, detail="No active organization for this user")
+
+    candidates = [dict(r) for r in rows]
+    if len(candidates) > 1:
+        non_internal = [c for c in candidates if not c["is_internal"]]
+        if len(non_internal) != 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Caller belongs to multiple organizations; upload via admin",
+            )
+        candidates = non_internal
+
+    org = candidates[0]
+    if org["status"] != "active":
+        raise HTTPException(status_code=409, detail="Organization is not active")
+    return org
+
+
+@app.post("/api/documents/presign")
+async def client_presign_upload(
+    payload: ClientPresignRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Step 1 of a client upload: validate, resolve the caller's org, mint a
+    presigned PUT URL. No DB row yet.
+    """
+    if payload.size_bytes > R2_MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds max upload size of {R2_MAX_UPLOAD_BYTES} bytes",
+        )
+    async with admin_conn() as conn:
+        org = await _resolve_caller_upload_org(conn, user["id"])
+
+    doc_id = str(uuid.uuid4())
+    storage_key = r2.build_storage_key(org["id"], doc_id, version=1)
+    upload_url = r2.presign_put(storage_key, content_type=payload.content_type)
+
+    return {
+        "doc_id": doc_id,
+        "storage_key": storage_key,
+        "upload_url": upload_url,
+        "expires_in": r2.UPLOAD_URL_TTL_SECONDS,
+    }
+
+
+@app.post("/api/documents/confirm")
+async def client_confirm_upload(
+    payload: ClientConfirmRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Step 2 of a client upload: record the row as source='client' for the
+    caller's org. storage_key is recomputed server-side from the resolved org
+    and doc_id, never trusted from the client.
+    """
+    try:
+        doc_uuid = uuid.UUID(payload.doc_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid doc_id")
+
+    async with admin_conn() as conn:
+        org = await _resolve_caller_upload_org(conn, user["id"])
+        storage_key = r2.build_storage_key(org["id"], doc_uuid, version=1)
+        row = await conn.fetchrow(
+            """
+            INSERT INTO documents
+              (id, org_id, category, name, storage_key, version,
+               size_bytes, content_type, uploaded_by, source)
+            VALUES ($1, $2, NULL, $3, $4, 1, $5, $6, $7, 'client')
+            RETURNING id, uploaded_at
+            """,
+            doc_uuid, org["id"], payload.name, storage_key,
+            payload.size_bytes, payload.content_type, user["id"],
+        )
+
+    await _audit(
+        actor_user_id=user["id"], action="document.uploaded",
+        resource_type="document", resource_id=row["id"], org_id=org["id"],
+        metadata={"name": payload.name, "source": "client",
+                  "size_bytes": payload.size_bytes},
+    )
+
+    return {
+        "id": str(row["id"]),
+        "name": payload.name,
+        "size_bytes": payload.size_bytes,
+        "uploaded_at": row["uploaded_at"].isoformat(),
+        "mine": True,
+    }
+
+
+@app.delete("/api/documents/{document_id}")
+async def client_delete_document(
+    document_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Soft-delete a client upload the caller made. Scoped to source='client'
+    AND uploaded_by = caller, so Locke deliverables and other people's uploads
+    are untouchable through this path.
+    """
+    try:
+        doc_uuid = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    async with admin_conn() as conn:
+        doc = await conn.fetchrow(
+            """
+            UPDATE documents
+               SET deleted_at = now()
+             WHERE id = $1 AND source = 'client'
+               AND uploaded_by = $2 AND deleted_at IS NULL
+            RETURNING id, org_id, name
+            """,
+            doc_uuid, user["id"],
+        )
+
+    if not doc:
+        # Either it doesn't exist, isn't a client upload, or isn't theirs.
+        await _audit(
+            actor_user_id=user["id"], action="document.delete",
+            resource_type="document", resource_id=doc_uuid, outcome="denied",
+        )
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    await _audit(
+        actor_user_id=user["id"], action="document.deleted",
+        resource_type="document", resource_id=doc["id"], org_id=doc["org_id"],
+        metadata={"name": doc["name"], "source": "client"},
+    )
+
+    return {"ok": True, "id": str(doc["id"])}
 
 
 @app.get("/api/documents/{document_id}/download")

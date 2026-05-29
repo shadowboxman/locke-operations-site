@@ -820,6 +820,29 @@
             </div>
           </div>
         </div>
+
+        <div class="panel" style="margin-top: 24px;">
+          <div class="doc-group">
+            <div class="doc-group-header">
+              <span>Shared with Locke</span>
+              <span class="doc-group-count" id="sharedCount">0 files</span>
+            </div>
+            <p class="greeting" style="padding: 16px 20px 0;">
+              Upload documentation about your systems, templates, or the processes you'd like us to automate. Files you share here go to Locke and are visible to your team.
+            </p>
+            <div style="padding: 16px 20px;">
+              <input type="file" id="sharedFileInput" style="display:none">
+              <button class="btn-primary" type="button" id="sharedUploadBtn">Upload a file</button>
+              <span id="sharedUploadStatus" style="margin-left:12px;font-size:13px;color:var(--concrete);"></span>
+            </div>
+            <div id="sharedList">
+              <div class="empty">
+                <div class="empty-title">Nothing shared yet</div>
+                <div class="empty-sub">Anything you upload here is sent to Locke and visible to your team.</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- ISSUES -->
@@ -1115,7 +1138,104 @@
           </div>
         </div>`).join('');
     }
+
+    // "Shared with Locke" — client uploads, kept separate from deliverables.
+    renderShared((data.shared) || []);
   }
+
+  function renderShared(items) {
+    const countEl = document.getElementById('sharedCount');
+    if (countEl) countEl.textContent = items.length + (items.length === 1 ? ' file' : ' files');
+    const el = document.getElementById('sharedList');
+    if (!items.length) {
+      el.innerHTML = `
+        <div class="empty">
+          <div class="empty-title">Nothing shared yet</div>
+          <div class="empty-sub">Anything you upload here is sent to Locke and visible to your team.</div>
+        </div>`;
+      return;
+    }
+    el.innerHTML = items.map(d => `
+      <div class="doc-row">
+        <div class="doc-name">${escapeHtml(d.name)}</div>
+        <div class="doc-meta">${fmtDate(d.uploaded_at)}</div>
+        <div class="doc-meta">${fmtBytes(d.size_bytes)}</div>
+        <div class="doc-download">
+          <a href="#" data-doc-id="${d.id}" onclick="return downloadDocument(event, this)">Download</a>${d.mine ? ` &middot; <a href="#" data-doc-id="${d.id}" onclick="return deleteSharedDocument(event, this)" style="color:var(--oxide);">Delete</a>` : ''}
+        </div>
+      </div>`).join('');
+  }
+
+  async function uploadSharedFile(file) {
+    const status = document.getElementById('sharedUploadStatus');
+    const btn = document.getElementById('sharedUploadBtn');
+    const contentType = file.type || 'application/octet-stream';
+    btn.disabled = true;
+    status.textContent = `Uploading ${file.name}...`;
+    try {
+      const token = await Clerk.session.getToken();
+      // 1. Presigned PUT URL from the API.
+      const pres = await fetch(`${API_BASE_URL}/api/documents/presign`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: file.name, content_type: contentType, size_bytes: file.size }),
+      });
+      if (!pres.ok) throw new Error(`presign ${pres.status}`);
+      const { upload_url, doc_id } = await pres.json();
+      // 2. Upload bytes straight to storage. Content-Type must match the signature.
+      const put = await fetch(upload_url, {
+        method: 'PUT', headers: { 'Content-Type': contentType }, body: file,
+      });
+      if (!put.ok) throw new Error(`upload ${put.status}`);
+      // 3. Record the row.
+      const conf = await fetch(`${API_BASE_URL}/api/documents/confirm`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doc_id, name: file.name, content_type: contentType, size_bytes: file.size }),
+      });
+      if (!conf.ok) throw new Error(`confirm ${conf.status}`);
+      status.textContent = 'Uploaded.';
+      await loadDocuments();
+      setTimeout(() => { status.textContent = ''; }, 3000);
+    } catch (err) {
+      console.error('Shared upload failed:', err);
+      status.textContent = 'Upload failed. Please try again.';
+    } finally {
+      btn.disabled = false;
+      document.getElementById('sharedFileInput').value = '';
+    }
+  }
+
+  async function deleteSharedDocument(event, link) {
+    event.preventDefault();
+    const id = link.getAttribute('data-doc-id');
+    if (!confirm('Remove this file? Locke will no longer see it.')) return false;
+    link.style.pointerEvents = 'none';
+    try {
+      const token = await Clerk.session.getToken();
+      const res = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`delete ${res.status}`);
+      await loadDocuments();
+    } catch (err) {
+      console.error('Delete failed:', err);
+      alert('Could not remove that file. Please try again.');
+      link.style.pointerEvents = '';
+    }
+    return false;
+  }
+
+  // Wire the upload button once (elements exist at parse time).
+  (function wireSharedUpload() {
+    const btn = document.getElementById('sharedUploadBtn');
+    const input = document.getElementById('sharedFileInput');
+    if (!btn || !input) return;
+    btn.addEventListener('click', () => input.click());
+    input.addEventListener('change', () => {
+      if (input.files && input.files[0]) uploadSharedFile(input.files[0]);
+    });
+  })();
 
   async function downloadDocument(event, link) {
     event.preventDefault();
