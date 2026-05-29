@@ -876,6 +876,18 @@ async def _guard_last_locke_admin(conn, row: dict[str, Any]) -> None:
             )
 
 
+def _guard_not_self(admin: dict, row: dict[str, Any]) -> None:
+    """Block an admin from suspending or deleting their own account, so they
+    can't lock themselves out. Distinct from the last-admin guard: this fires
+    even when other admins exist. Standard self-action protection.
+    """
+    if str(row["user_id"]) == str(admin["id"]):
+        raise HTTPException(
+            status_code=409,
+            detail="You cannot suspend or delete your own account.",
+        )
+
+
 @app.post("/api/admin/orgs/{org_id}/members/{user_id}/suspend")
 async def suspend_member(
     org_id: str,
@@ -886,6 +898,7 @@ async def suspend_member(
     async with admin_conn() as conn:
         row = await _load_member_for_admin_action(conn, org_id, user_id)
         await _guard_last_locke_admin(conn, row)
+        _guard_not_self(admin, row)
 
         if row["clerk_user_id"]:
             await lock_clerk_user(row["clerk_user_id"])
@@ -951,6 +964,7 @@ async def delete_member(
     async with admin_conn() as conn:
         row = await _load_member_for_admin_action(conn, org_id, user_id)
         await _guard_last_locke_admin(conn, row)
+        _guard_not_self(admin, row)
 
         # Capture audit fields before the row is gone.
         deleted_email = row["email"]
