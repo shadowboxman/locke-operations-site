@@ -365,6 +365,24 @@ async def delete_clerk_membership(clerk_org_id: str, clerk_user_id: str) -> None
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
 
 
+async def delete_clerk_organization(clerk_org_id: str) -> None:
+    """Permanently delete a Clerk organization.
+
+    Used for hard-deleting client orgs that should disappear entirely (e.g.
+    orphan orgs created by users with no membership). 404 is treated as
+    success (already gone).
+    """
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.delete(
+            f"{CLERK_API_BASE}/organizations/{clerk_org_id}",
+            headers=_clerk_headers(),
+        )
+    if resp.status_code >= 400 and resp.status_code != 404:
+        log.warning("clerk.api.delete_organization_failed status=%d body=%s",
+                    resp.status_code, resp.text)
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+
 async def lock_clerk_user(clerk_user_id: str) -> None:
     """Lock a Clerk user. Locked users cannot sign in until unlocked.
 
@@ -461,6 +479,7 @@ async def handle_webhook_event(event: dict[str, Any]) -> None:
         "user.updated": _on_user_updated,
         "organization.created": _on_org_created,
         "organization.updated": _on_org_updated,
+        "organization.deleted": _on_org_deleted,
         "organizationMembership.created": _on_membership_created,
         "organizationMembership.deleted": _on_membership_deleted,
     }
@@ -531,6 +550,54 @@ async def _on_org_updated(data: dict[str, Any]) -> None:
             "WHERE clerk_org_id = $1",
             clerk_org_id, name, slug,
         )
+
+
+async def _on_org_deleted(data: dict[str, Any]) -> None:
+    """Mirror Clerk org deletion into our DB.
+
+    Fires both as a consequence of our own delete_org endpoint (which calls
+    Clerk first) and when an admin deletes an org directly via Clerk dashboard.
+    Idempotent: if our row is already gone, returns silently.
+
+    Refuses to hard-delete if documents exist (would violate the RESTRICT FK).
+    In that case the org is archived instead and a warning is logged so an
+    admin can investigate. memberships are deleted explicitly because their
+    FK to organizations is RESTRICT.
+    """
+    clerk_org_id = data["id"]
+    async with admin_conn() as conn:
+        org_row = await conn.fetchrow(
+            "SELECT id, is_internal FROM organizations WHERE clerk_org_id = $1",
+            clerk_org_id,
+        )
+        if not org_row:
+            log.info("clerk.webhook.org.deleted no_local_row clerk_org_id=%s", clerk_org_id)
+            return
+
+        org_id = org_row["id"]
+        if org_row["is_internal"]:
+            log.warning("clerk.webhook.org.deleted refused_internal org_id=%s", org_id)
+            return
+
+        doc_count = await conn.fetchval(
+            "SELECT count(*) FROM documents WHERE org_id = $1 AND deleted_at IS NULL",
+            org_id,
+        )
+        if doc_count:
+            log.warning(
+                "clerk.webhook.org.deleted has_documents archiving org_id=%s doc_count=%s",
+                org_id, doc_count,
+            )
+            await conn.execute(
+                "UPDATE organizations SET status = 'archived', archived_at = now(), "
+                "updated_at = now() WHERE id = $1",
+                org_id,
+            )
+            return
+
+        await conn.execute("DELETE FROM memberships WHERE org_id = $1", org_id)
+        await conn.execute("DELETE FROM organizations WHERE id = $1", org_id)
+        log.info("clerk.webhook.org.deleted org_id=%s clerk_org_id=%s", org_id, clerk_org_id)
 
 
 async def _on_membership_created(data: dict[str, Any]) -> None:

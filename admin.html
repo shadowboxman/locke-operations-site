@@ -641,7 +641,8 @@
         <div style="display: flex; gap: 8px;">
           <button class="btn-secondary" id="btnEditOrg">Edit</button>
           <button class="btn-secondary" id="btnSuspendOrg">Suspend</button>
-          <button class="btn-secondary" id="btnArchiveOrg" style="color: var(--oxide); border-color: var(--oxide);">Archive</button>
+          <button class="btn-secondary" id="btnArchiveOrg">Archive</button>
+          <button class="btn-secondary" id="btnDeleteOrg" style="color: var(--oxide); border-color: var(--oxide);">Delete</button>
         </div>
       </div>
 
@@ -1052,7 +1053,12 @@
       const btnSuspend = document.getElementById('btnSuspendOrg');
       const btnArchive = document.getElementById('btnArchiveOrg');
       const btnEdit = document.getElementById('btnEditOrg');
+      const btnDelete = document.getElementById('btnDeleteOrg');
       // Update button labels and disable states based on org status.
+      // Delete is always available for non-internal orgs (backend guards
+      // against orgs with documents); it's the escape hatch when archive
+      // isn't strong enough.
+      btnDelete.disabled = false;
       if (org.status === 'active') {
         btnSuspend.textContent = 'Suspend';
         btnSuspend.disabled = false;
@@ -1356,6 +1362,32 @@
         await apiPatch(`/api/admin/orgs/${currentOrg.id}`, { status: 'archived' });
         flash(`Archived "${currentOrg.name}".`);
         await viewOrg(currentOrg.id);
+      },
+    });
+  });
+
+  // ===============================================================
+  // DELETE ORG (hard delete)
+  // ===============================================================
+  // Backend refuses if any documents exist (use archive instead) or if
+  // the org is the internal Locke org. Otherwise removes the Clerk org,
+  // memberships, and our row. audit_events.org_id is set to NULL so
+  // history survives with a hole. Use this to clean up orphan orgs
+  // (e.g. created by Clerk's auto-create-on-sign-in flow).
+  document.getElementById('btnDeleteOrg').addEventListener('click', () => {
+    if (!currentOrg) return;
+    confirmDialog({
+      title: 'Delete organization permanently?',
+      body: `<strong>${escapeHtml(currentOrg.name)}</strong> will be removed from Clerk and our database. Memberships are deleted. Documents block deletion (archive instead if any exist). Audit history survives but loses its org reference. <strong>This cannot be undone.</strong><br><br>To confirm, type the org slug below.`,
+      confirmLabel: 'Delete org',
+      typeToConfirm: currentOrg.slug,
+      onConfirm: async () => {
+        await apiDelete(`/api/admin/orgs/${currentOrg.id}`);
+        flash(`Deleted "${currentOrg.name}".`);
+        // After delete the org is gone; route back to the list and reload.
+        currentOrg = null;
+        showView('orgs');
+        await loadOrgs();
       },
     });
   });

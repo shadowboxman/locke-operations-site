@@ -41,6 +41,7 @@ from clerk import (
     create_clerk_invitation,
     create_clerk_organization,
     delete_clerk_membership,
+    delete_clerk_organization,
     delete_clerk_user,
     get_current_user,
     handle_webhook_event,
@@ -651,6 +652,68 @@ async def update_org(
 
     async with admin_conn() as conn:
         return await _serialize_org(conn, org["id"])
+
+
+@app.delete("/api/admin/orgs/{org_id}")
+async def delete_org(
+    org_id: str,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Hard delete an org.
+
+    Refuses to delete:
+    - The internal Locke org (would be catastrophic).
+    - Any org with documents (data loss risk; archive instead).
+
+    For orgs that pass the guards:
+    1. Deletes the Clerk org (so admins don't see a stale entry there).
+    2. Deletes our memberships (FK to organizations is RESTRICT, requires explicit).
+    3. Deletes our organizations row. Cascades to invitations; audit_events.org_id
+       set to NULL to preserve history with a hole where the org used to be.
+
+    Idempotent with _on_org_deleted webhook: whichever side runs first wins,
+    the other becomes a no-op.
+    """
+    async with admin_conn() as conn:
+        org = await conn.fetchrow(
+            "SELECT id, clerk_org_id, name, slug, is_internal "
+            "FROM organizations WHERE id = $1",
+            uuid.UUID(org_id),
+        )
+        if not org:
+            raise HTTPException(status_code=404, detail="Org not found")
+        if org["is_internal"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot delete the internal Locke organization.",
+            )
+
+        doc_count = await conn.fetchval(
+            "SELECT count(*) FROM documents WHERE org_id = $1 AND deleted_at IS NULL",
+            org["id"],
+        )
+        if doc_count:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Cannot delete: org has {doc_count} document(s). "
+                    f"Archive the org or delete its documents first."
+                ),
+            )
+
+        if org["clerk_org_id"]:
+            await delete_clerk_organization(org["clerk_org_id"])
+
+        await conn.execute("DELETE FROM memberships WHERE org_id = $1", org["id"])
+        await conn.execute("DELETE FROM organizations WHERE id = $1", org["id"])
+
+    await _audit(
+        actor_user_id=admin["id"], action="organization.deleted",
+        resource_type="organization", resource_id=org["id"],
+        metadata={"name": org["name"], "slug": org["slug"]},
+    )
+
+    return {"ok": True}
 
 
 async def _serialize_org(conn, org_id) -> dict:
