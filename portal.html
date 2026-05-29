@@ -926,6 +926,16 @@
         </div>
 
         <div class="panel">
+          <div class="panel-header"><div class="panel-title">Security</div></div>
+          <div class="panel-body">
+            <p style="color: var(--navy); margin-bottom: 16px;">
+              Change your password, update your email, and review active sessions on your account.
+            </p>
+            <button class="btn-primary" onclick="openClerkAccount()">Manage account &amp; security</button>
+          </div>
+        </div>
+
+        <div class="panel">
           <div class="panel-header"><div class="panel-title">Team</div></div>
           <div class="empty">
             <div class="empty-title">Just you</div>
@@ -1061,6 +1071,28 @@
     dropdown.classList.remove('open');
   });
   dropdown.addEventListener('click', (e) => e.stopPropagation());
+
+  // === Account & security modal ===
+  // Opens Clerk's built-in UserProfile (password change, 2FA enrollment,
+  // active sessions, email management). All actually-secure account
+  // management goes through this — we don't roll our own.
+  window.openClerkAccount = function() {
+    if (!window.Clerk || !Clerk.loaded) return;
+    Clerk.openUserProfile({
+      appearance: {
+        variables: {
+          colorPrimary: '#F25A1A',
+          colorText: '#1A2332',
+          colorTextSecondary: '#A8A6A0',
+          colorBackground: '#F4F1EA',
+          colorInputBackground: '#FAF8F2',
+          borderRadius: '0',
+          fontFamily: '"IBM Plex Sans", -apple-system, sans-serif',
+          fontFamilyButtons: '"IBM Plex Sans", -apple-system, sans-serif',
+        },
+      },
+    });
+  };
 
   // === Logout ===
   document.getElementById('logoutBtn').addEventListener('click', async () => {
