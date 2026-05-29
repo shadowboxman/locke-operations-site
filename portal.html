@@ -768,25 +768,26 @@
         </p>
 
         <!-- Locke admin only: org selector + deliverable upload. Hidden for clients. -->
-        <div id="adminDocBar" style="display:none;border:1px solid var(--hairline);border-radius:8px;padding:14px 16px;margin-bottom:20px;background:rgba(0,0,0,0.015);">
-          <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
-            <div style="display:flex;align-items:center;gap:8px;">
-              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--concrete);">Viewing org</span>
-              <select id="adminOrgSelect" style="padding:7px 10px;border:1px solid var(--hairline);border-radius:6px;font-size:13px;font-family:inherit;color:var(--navy);"></select>
+        <div id="adminDocBar" style="display:none;border:1px solid var(--hairline-strong);background:var(--bone);padding:16px;margin-bottom:20px;">
+          <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;">
+            <div class="form-field" style="flex:0 0 auto;">
+              <label class="form-label" for="adminOrgSelect">Viewing org</label>
+              <select id="adminOrgSelect" class="form-select" style="width:auto;min-width:220px;"></select>
             </div>
             <div style="flex:1;"></div>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <select id="adminDocCategory" style="padding:7px 10px;border:1px solid var(--hairline);border-radius:6px;font-size:13px;font-family:inherit;color:var(--navy);">
+            <div class="form-field" style="flex:0 0 auto;">
+              <label class="form-label" for="adminDocCategory">Category</label>
+              <select id="adminDocCategory" class="form-select" style="width:auto;min-width:170px;">
                 <option value="audit_report">Audit report</option>
                 <option value="runbook">Runbook</option>
                 <option value="monthly_review">Monthly review</option>
                 <option value="contract">Contract</option>
               </select>
-              <input type="file" id="adminDocFile" style="display:none">
-              <button class="btn-primary" type="button" id="adminDocUploadBtn">Upload deliverable</button>
             </div>
+            <input type="file" id="adminDocFile" style="display:none">
+            <button class="btn-primary" type="button" id="adminDocUploadBtn">Upload deliverable</button>
           </div>
-          <div id="adminDocStatus" style="font-size:13px;color:var(--concrete);margin-top:10px;min-height:1px;"></div>
+          <div id="adminDocStatus" class="form-help" style="margin-top:12px;min-height:1px;"></div>
         </div>
 
         <div class="panel">
@@ -853,9 +854,9 @@
               Upload documentation about your systems, templates, or the processes you'd like us to automate. Files you share here go to Locke and are visible to your team.
             </p>
             <div style="padding: 16px 20px;" id="sharedUploadControl">
-              <input type="text" id="sharedNoteInput" maxlength="2000"
+              <input type="text" id="sharedNoteInput" class="form-input" maxlength="2000"
                      placeholder="Optional note: what is this file? (e.g. our dispatch SOP)"
-                     style="display:block;width:100%;max-width:520px;margin-bottom:10px;padding:9px 12px;border:1px solid var(--hairline);border-radius:6px;font-size:13px;font-family:inherit;color:var(--navy);box-sizing:border-box;">
+                     style="max-width:520px;margin-bottom:10px;">
               <input type="file" id="sharedFileInput" style="display:none">
               <button class="btn-primary" type="button" id="sharedUploadBtn">Upload a file</button>
               <span id="sharedUploadStatus" style="margin-left:12px;font-size:13px;color:var(--concrete);"></span>
