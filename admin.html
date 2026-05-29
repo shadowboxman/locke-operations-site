@@ -658,6 +658,14 @@
         <div class="section-title">Pending invitations</div>
       </div>
       <div id="pendingTableContainer"></div>
+
+      <div class="section-row" id="documentsSectionRow">
+        <div>
+          <div class="section-title">Documents</div>
+        </div>
+        <button class="btn-primary" id="btnUploadDoc">Upload document</button>
+      </div>
+      <div id="documentsTableContainer"></div>
     </section>
   </main>
 
@@ -788,6 +796,42 @@
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeModal('modalInvite')">Cancel</button>
         <button class="btn-primary" id="btnSubmitInvite">Send invitation</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: UPLOAD DOCUMENT -->
+  <div class="modal-backdrop" id="modalUploadDoc">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Upload document</div>
+        <button class="modal-close" onclick="closeModal('modalUploadDoc')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="formUploadDoc">
+          <div class="form-field">
+            <label class="form-label" for="uploadFile">File <span class="req">*</span></label>
+            <input class="form-input" type="file" id="uploadFile" required>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="uploadCategory">Category</label>
+            <select class="form-select" id="uploadCategory">
+              <option value="audit_report" selected>Audit report</option>
+              <option value="runbook">Runbook</option>
+              <option value="monthly_review">Monthly review</option>
+              <option value="contract">Contract</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="uploadName">Display name</label>
+            <input class="form-input" type="text" id="uploadName" placeholder="Defaults to the file name">
+          </div>
+          <div class="form-help">The file uploads directly to storage; it does not pass through the API server.</div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalUploadDoc')">Cancel</button>
+        <button class="btn-primary" id="btnSubmitUploadDoc">Upload</button>
       </div>
     </div>
   </div>
@@ -1205,6 +1249,134 @@
             </div>
           `).join('')}
         </div>`;
+    }
+
+    // Documents (list + upload).
+    renderDocumentsSection(org);
+  }
+
+  // ===============================================================
+  // DOCUMENTS
+  // ===============================================================
+  const DOC_CATEGORY_LABELS = {
+    audit_report: 'Audit report', runbook: 'Runbook',
+    monthly_review: 'Monthly review', contract: 'Contract',
+  };
+
+  function fmtBytes(n) {
+    if (n == null) return '—';
+    if (n < 1024) return n + ' B';
+    const u = ['KB', 'MB', 'GB', 'TB'];
+    let i = -1, v = n;
+    do { v /= 1024; i++; } while (v >= 1024 && i < u.length - 1);
+    return v.toFixed(v < 10 ? 1 : 0) + ' ' + u[i];
+  }
+
+  function renderDocumentsSection(org) {
+    // Uploads only make sense for active client orgs. The backend also
+    // enforces this (presign returns 409 for non-active orgs).
+    const canUpload = !org.is_internal && org.status === 'active';
+    document.getElementById('btnUploadDoc').style.display = canUpload ? '' : 'none';
+    loadOrgDocuments(org.id);
+  }
+
+  async function loadOrgDocuments(orgId) {
+    const el = document.getElementById('documentsTableContainer');
+    el.innerHTML = '<div class="loading">Loading...</div>';
+    let docs;
+    try {
+      const data = await apiGet(`/api/admin/orgs/${orgId}/documents`);
+      docs = data.documents || [];
+    } catch (err) {
+      el.innerHTML = `<div class="empty"><div class="empty-sub">${escapeHtml(err.message)}</div></div>`;
+      return;
+    }
+    if (!docs.length) {
+      el.innerHTML = `
+        <div class="empty">
+          <div class="empty-title">No documents yet</div>
+          <div class="empty-sub">Click "Upload document" to publish a file to this organization.</div>
+        </div>`;
+      return;
+    }
+    el.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr><th>Name</th><th>Category</th><th>Size</th><th>Uploaded</th><th></th></tr>
+        </thead>
+        <tbody>
+          ${docs.map(d => `
+            <tr>
+              <td>${escapeHtml(d.name)}</td>
+              <td>${escapeHtml(DOC_CATEGORY_LABELS[d.category] || d.category)}</td>
+              <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${fmtBytes(d.size_bytes)}</td>
+              <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${fmtDate(d.uploaded_at)}</td>
+              <td style="text-align:right;">
+                <button class="btn-link" style="color:var(--oxide);" onclick='confirmDeleteDocument(${JSON.stringify(d)})'>Delete</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  document.getElementById('btnUploadDoc').addEventListener('click', () => {
+    document.getElementById('uploadFile').value = '';
+    document.getElementById('uploadName').value = '';
+    document.getElementById('uploadCategory').value = 'audit_report';
+    openModal('modalUploadDoc');
+  });
+
+  document.getElementById('btnSubmitUploadDoc').addEventListener('click', async () => {
+    const fileInput = document.getElementById('uploadFile');
+    const file = fileInput.files[0];
+    if (!file) { flash('Choose a file to upload.', 'error'); return; }
+    const category = document.getElementById('uploadCategory').value;
+    const name = (document.getElementById('uploadName').value.trim() || file.name);
+    const contentType = file.type || 'application/octet-stream';
+
+    const btn = document.getElementById('btnSubmitUploadDoc');
+    btn.disabled = true;
+    btn.textContent = 'Uploading...';
+    try {
+      // 1. Ask the API for a presigned PUT URL.
+      const presign = await apiPost(
+        `/api/admin/orgs/${currentOrg.id}/documents/presign`,
+        { name, category, content_type: contentType, size_bytes: file.size },
+      );
+      // 2. Upload bytes straight to R2 (no auth header; the signature is the auth).
+      //    Content-Type must match what was bound into the presigned URL.
+      const put = await fetch(presign.upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': contentType },
+        body: file,
+      });
+      if (!put.ok) throw new Error(`Storage upload failed (${put.status})`);
+      // 3. Record the document row.
+      await apiPost(
+        `/api/admin/orgs/${currentOrg.id}/documents/confirm`,
+        { doc_id: presign.doc_id, name, category,
+          content_type: contentType, size_bytes: file.size },
+      );
+      closeModal('modalUploadDoc');
+      flash('Document uploaded.', 'success');
+      loadOrgDocuments(currentOrg.id);
+    } catch (err) {
+      flash(`Upload failed: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Upload';
+    }
+  });
+
+  async function confirmDeleteDocument(doc) {
+    if (!confirm(`Delete "${doc.name}"? Clients will no longer see it.`)) return;
+    try {
+      await apiDelete(`/api/admin/documents/${doc.id}`);
+      flash('Document deleted.', 'success');
+      loadOrgDocuments(currentOrg.id);
+    } catch (err) {
+      flash(`Delete failed: ${err.message}`, 'error');
     }
   }
 

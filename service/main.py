@@ -39,6 +39,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 import hubspot_client
+import r2
 from clerk import (
     create_clerk_invitation,
     create_clerk_organization,
@@ -1005,6 +1006,279 @@ async def revoke_invitation(
     )
 
     return {"ok": True}
+
+
+# ===============================================================
+# Phase 2: Document core
+#
+# Upload is presigned-PUT: the admin browser uploads bytes directly to R2,
+# then calls /confirm to record the documents row. Keeps large files off
+# Railway. Downloads always proxy through the API to mint a short-lived
+# signed URL (the access-control + revocation boundary; never hand the
+# browser a raw key or a long-lived URL).
+# ===============================================================
+
+DocumentCategory = Literal["audit_report", "runbook", "monthly_review", "contract"]
+
+R2_MAX_UPLOAD_BYTES = int(os.environ.get("R2_MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))
+
+
+class PresignUploadRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    category: DocumentCategory
+    content_type: str = Field(min_length=1, max_length=255)
+    size_bytes: int = Field(ge=1)
+
+
+class ConfirmUploadRequest(BaseModel):
+    doc_id: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=255)
+    category: DocumentCategory
+    content_type: str = Field(min_length=1, max_length=255)
+    size_bytes: int = Field(ge=1)
+
+
+async def _load_active_org(conn, org_id: str) -> dict:
+    """Fetch an org by id or raise 404. Used by document admin endpoints."""
+    try:
+        oid = uuid.UUID(org_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Org not found")
+    org = await conn.fetchrow(
+        "SELECT id, name, status::text AS status FROM organizations WHERE id = $1",
+        oid,
+    )
+    if not org:
+        raise HTTPException(status_code=404, detail="Org not found")
+    return dict(org)
+
+
+@app.post("/api/admin/orgs/{org_id}/documents/presign")
+async def presign_document_upload(
+    org_id: str,
+    payload: PresignUploadRequest,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Step 1 of upload: validate, mint a presigned PUT URL, return the doc_id
+    and storage_key the browser must use. No DB row yet; that happens at confirm.
+    """
+    if payload.size_bytes > R2_MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds max upload size of {R2_MAX_UPLOAD_BYTES} bytes",
+        )
+
+    async with admin_conn() as conn:
+        org = await _load_active_org(conn, org_id)
+    if org["status"] != "active":
+        raise HTTPException(status_code=409, detail="Org is not active")
+
+    doc_id = str(uuid.uuid4())
+    storage_key = r2.build_storage_key(org["id"], doc_id, version=1)
+    upload_url = r2.presign_put(storage_key, content_type=payload.content_type)
+
+    return {
+        "doc_id": doc_id,
+        "storage_key": storage_key,
+        "upload_url": upload_url,
+        "expires_in": r2.UPLOAD_URL_TTL_SECONDS,
+    }
+
+
+@app.post("/api/admin/orgs/{org_id}/documents/confirm")
+async def confirm_document_upload(
+    org_id: str,
+    payload: ConfirmUploadRequest,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Step 2 of upload: record the documents row after the browser PUT to R2.
+
+    storage_key is recomputed server-side from org_id + doc_id (never trusted
+    from the client) so a caller can't point a row at someone else's object.
+    """
+    try:
+        doc_uuid = uuid.UUID(payload.doc_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid doc_id")
+
+    async with admin_conn() as conn:
+        org = await _load_active_org(conn, org_id)
+        storage_key = r2.build_storage_key(org["id"], doc_uuid, version=1)
+        row = await conn.fetchrow(
+            """
+            INSERT INTO documents
+              (id, org_id, category, name, storage_key, version,
+               size_bytes, content_type, uploaded_by)
+            VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8)
+            RETURNING id, uploaded_at
+            """,
+            doc_uuid, org["id"], payload.category, payload.name, storage_key,
+            payload.size_bytes, payload.content_type, admin["id"],
+        )
+
+    await _audit(
+        actor_user_id=admin["id"], action="document.uploaded",
+        resource_type="document", resource_id=row["id"], org_id=org["id"],
+        metadata={"name": payload.name, "category": payload.category,
+                  "size_bytes": payload.size_bytes},
+    )
+
+    return {
+        "id": str(row["id"]),
+        "org_id": str(org["id"]),
+        "name": payload.name,
+        "category": payload.category,
+        "size_bytes": payload.size_bytes,
+        "uploaded_at": row["uploaded_at"].isoformat(),
+    }
+
+
+@app.get("/api/admin/orgs/{org_id}/documents")
+async def admin_list_org_documents(
+    org_id: str,
+    admin: dict = Depends(require_locke_admin),
+):
+    """List one org's live documents for the admin UI.
+
+    Distinct from GET /api/documents (user/RLS-scoped). Admin reads through
+    admin_conn and filters explicitly by org_id, so it returns exactly this
+    org's non-deleted documents regardless of the admin's own memberships.
+    """
+    async with admin_conn() as conn:
+        org = await _load_active_org(conn, org_id)
+        rows = await conn.fetch(
+            """
+            SELECT id, category::text AS category, name, size_bytes,
+                   content_type, uploaded_at
+              FROM documents
+             WHERE org_id = $1 AND deleted_at IS NULL
+             ORDER BY uploaded_at DESC
+            """,
+            org["id"],
+        )
+
+    return {
+        "documents": [
+            {
+                "id": str(r["id"]),
+                "category": r["category"],
+                "name": r["name"],
+                "size_bytes": r["size_bytes"],
+                "content_type": r["content_type"],
+                "uploaded_at": r["uploaded_at"].isoformat(),
+            }
+            for r in rows
+        ],
+    }
+
+
+@app.get("/api/documents")
+async def list_documents(user: dict = Depends(get_current_user)):
+    """List the caller's documents, grouped by category.
+
+    Reads through user_conn so RLS scopes rows to orgs the caller can see and
+    hides soft-deleted documents. No org_id param: it's derived from the session.
+    """
+    async with user_conn(user["id"]) as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, org_id, category::text AS category, name,
+                   size_bytes, content_type, uploaded_at
+              FROM documents
+             ORDER BY uploaded_at DESC
+            """,
+        )
+
+    grouped: dict[str, list[dict]] = {
+        "audit_report": [], "runbook": [], "monthly_review": [], "contract": [],
+    }
+    for r in rows:
+        grouped.setdefault(r["category"], []).append({
+            "id": str(r["id"]),
+            "name": r["name"],
+            "category": r["category"],
+            "size_bytes": r["size_bytes"],
+            "content_type": r["content_type"],
+            "uploaded_at": r["uploaded_at"].isoformat(),
+        })
+
+    return {"categories": grouped, "total": len(rows)}
+
+
+@app.get("/api/documents/{document_id}/download")
+async def download_document(
+    document_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Mint a short-lived signed URL for a document the caller may see.
+
+    The read goes through user_conn, so RLS is the access gate: a document the
+    caller can't see (wrong org, or soft-deleted) returns no row -> 404, and we
+    log the denied attempt per the append-only-audit commitment.
+    """
+    try:
+        doc_uuid = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    async with user_conn(user["id"]) as conn:
+        doc = await conn.fetchrow(
+            "SELECT id, org_id, name, storage_key FROM documents WHERE id = $1",
+            doc_uuid,
+        )
+
+    if not doc:
+        await _audit(
+            actor_user_id=user["id"], action="document.download",
+            resource_type="document", resource_id=doc_uuid, outcome="denied",
+        )
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    url = r2.presign_get(doc["storage_key"], download_filename=doc["name"])
+
+    await _audit(
+        actor_user_id=user["id"], action="document.downloaded",
+        resource_type="document", resource_id=doc["id"], org_id=doc["org_id"],
+        metadata={"name": doc["name"]},
+    )
+
+    return {"url": url, "expires_in": r2.DOWNLOAD_URL_TTL_SECONDS, "name": doc["name"]}
+
+
+@app.delete("/api/admin/documents/{document_id}")
+async def delete_document(
+    document_id: str,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Soft-delete a document. The R2 object stays put (retention/purge is a
+    later job); RLS already hides soft-deleted rows from clients.
+    """
+    try:
+        doc_uuid = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    async with admin_conn() as conn:
+        doc = await conn.fetchrow(
+            """
+            UPDATE documents
+               SET deleted_at = now()
+             WHERE id = $1 AND deleted_at IS NULL
+            RETURNING id, org_id, name
+            """,
+            doc_uuid,
+        )
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    await _audit(
+        actor_user_id=admin["id"], action="document.deleted",
+        resource_type="document", resource_id=doc["id"], org_id=doc["org_id"],
+        metadata={"name": doc["name"]},
+    )
+
+    return {"ok": True, "id": str(doc["id"])}
 
 
 @app.post("/webhooks/clerk")

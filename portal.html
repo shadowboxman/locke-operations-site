@@ -1045,7 +1045,102 @@
 
     // Re-render issues now that we know the user's email (issues are scoped per-user).
     renderIssues();
+
+    // Load documents for this user's org (RLS-scoped server-side).
+    loadDocuments();
   })();
+
+  // === Documents ===
+  // Maps the document_category enum to its DOM containers in the Documents tab.
+  const DOC_CATEGORIES = {
+    audit_report:   { list: 'auditList',    count: 'auditCount' },
+    runbook:        { list: 'runbookList',  count: 'runbookCount' },
+    monthly_review: { list: 'reviewList',   count: 'reviewCount' },
+    contract:       { list: 'contractList', count: 'contractCount' },
+  };
+
+  function fmtBytes(n) {
+    if (n == null) return '—';
+    if (n < 1024) return n + ' B';
+    const u = ['KB', 'MB', 'GB', 'TB'];
+    let i = -1, v = n;
+    do { v /= 1024; i++; } while (v >= 1024 && i < u.length - 1);
+    return v.toFixed(v < 10 ? 1 : 0) + ' ' + u[i];
+  }
+
+  function fmtDate(iso) {
+    try {
+      return new Date(iso).toLocaleDateString('en-US',
+        { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch (e) { return iso; }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  async function loadDocuments() {
+    let data;
+    try {
+      const token = await Clerk.session.getToken();
+      const res = await fetch(`${API_BASE_URL}/api/documents`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`/api/documents returned ${res.status}`);
+      data = await res.json();
+    } catch (err) {
+      console.error('Failed to load documents:', err);
+      return; // leave the per-category empty states in place
+    }
+
+    document.getElementById('docTotalLabel').textContent = data.total || 0;
+
+    for (const [category, els] of Object.entries(DOC_CATEGORIES)) {
+      const docs = (data.categories && data.categories[category]) || [];
+      const countEl = document.getElementById(els.count);
+      if (countEl) {
+        countEl.textContent = docs.length + (docs.length === 1 ? ' file' : ' files');
+      }
+      if (!docs.length) continue; // keep the existing empty-state copy
+
+      const listEl = document.getElementById(els.list);
+      listEl.innerHTML = docs.map(d => `
+        <div class="doc-row">
+          <div class="doc-name">${escapeHtml(d.name)}</div>
+          <div class="doc-meta">${fmtDate(d.uploaded_at)}</div>
+          <div class="doc-meta">${fmtBytes(d.size_bytes)}</div>
+          <div class="doc-download">
+            <a href="#" data-doc-id="${d.id}" onclick="return downloadDocument(event, this)">Download</a>
+          </div>
+        </div>`).join('');
+    }
+  }
+
+  async function downloadDocument(event, link) {
+    event.preventDefault();
+    const id = link.getAttribute('data-doc-id');
+    const original = link.textContent;
+    link.textContent = '...';
+    link.style.pointerEvents = 'none';
+    try {
+      const token = await Clerk.session.getToken();
+      const res = await fetch(`${API_BASE_URL}/api/documents/${id}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`download returned ${res.status}`);
+      const { url } = await res.json();
+      // Navigate to the short-lived signed URL to start the download.
+      window.location.href = url;
+    } catch (err) {
+      console.error('Download failed:', err);
+      alert('That download could not be started. Please try again.');
+    } finally {
+      link.textContent = original;
+      link.style.pointerEvents = '';
+    }
+    return false;
+  }
 
   // === Section navigation ===
   function goTo(id) {
