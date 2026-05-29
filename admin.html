@@ -1017,6 +1017,7 @@
               <th>Status</th>
               <th>Members</th>
               <th>Created</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -1030,6 +1031,9 @@
                 <td><span class="badge badge-${o.status}">${o.status}</span></td>
                 <td>${o.member_count}</td>
                 <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${fmtDate(o.created_at)}</td>
+                <td style="text-align:right;white-space:nowrap;">
+                  ${o.is_internal ? '' : `<a href="portal.html?org=${o.id}" class="btn-link" onclick="event.stopPropagation();">Open in portal →</a>`}
+                </td>
               </tr>
             `).join('')}
           </tbody>
@@ -1048,6 +1052,7 @@
               <div class="card-sub" style="margin-top:8px;">
                 ${o.member_count} member${o.member_count === 1 ? '' : 's'} · Created ${fmtDate(o.created_at)}
               </div>
+              ${o.is_internal ? '' : `<div style="margin-top:10px;"><a href="portal.html?org=${o.id}" class="btn-link" onclick="event.stopPropagation();">Open in portal →</a></div>`}
             </div>
           `).join('')}
         </div>`;

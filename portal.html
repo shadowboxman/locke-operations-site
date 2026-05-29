@@ -997,6 +997,12 @@
           </div>
         </div>
 
+        <!-- Locke admin only: lifecycle for the org selected in the sidebar. -->
+        <div class="panel" id="orgSettingsPanel" style="display:none;">
+          <div class="panel-header"><div class="panel-title">Organization</div></div>
+          <div class="panel-body" id="orgSettingsBody"></div>
+        </div>
+
         <div class="panel">
           <div class="panel-header"><div class="panel-title">Security</div></div>
           <div class="panel-body">
@@ -1190,10 +1196,13 @@
     }
 
     // Global org switcher in the sidebar. Switching re-scopes the whole portal.
+    // Preselect from ?org=<id> if valid (deep-link from /admin), else first org.
+    const wantOrg = new URLSearchParams(window.location.search).get('org');
+    adminSelectedOrgId = (wantOrg && adminOrgs.some(o => o.id === wantOrg))
+      ? wantOrg
+      : (adminOrgs.length ? adminOrgs[0].id : null);
     const navSel = document.getElementById('navOrgSelect');
-    navSel.innerHTML = adminOrgs.map(o =>
-      `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join('');
-    adminSelectedOrgId = adminOrgs.length ? adminOrgs[0].id : null;
+    populateNavOrgSelect();
     navSel.addEventListener('change', () => { adminSelectedOrgId = navSel.value; onOrgChange(); });
     document.getElementById('adminOrgSwitcher').style.display = adminOrgs.length ? 'block' : 'none';
 
@@ -1210,7 +1219,20 @@
       if (upFile.files && upFile.files[0]) adminUploadDeliverable(upFile.files[0]);
     });
 
-    applyAdminOrgLabel();  // reflect the initial org in the portal chrome
+    applyAdminOrgLabel();   // reflect the initial org in the portal chrome
+    renderOrgSettings();    // org lifecycle panel in Settings
+  }
+
+  function populateNavOrgSelect() {
+    const navSel = document.getElementById('navOrgSelect');
+    if (!navSel) return;
+    navSel.innerHTML = adminOrgs.map(o =>
+      `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join('');
+    if (adminSelectedOrgId) navSel.value = adminSelectedOrgId;
+  }
+
+  function selectedOrg() {
+    return adminOrgs.find(o => o.id === adminSelectedOrgId) || null;
   }
 
   // Name of the currently selected org, for labels.
@@ -1236,9 +1258,10 @@
   // hook in here as they become org-aware.
   function onOrgChange() {
     applyAdminOrgLabel();
-    loadDocuments();   // re-scopes Documents + Overview recent activity + doc badge
-    renderIssues();    // refresh the admin placeholder/counts
-    renderTeam();      // selected org's members
+    loadDocuments();      // re-scopes Documents + Overview recent activity + doc badge
+    renderIssues();       // refresh the admin placeholder/counts
+    renderTeam();         // selected org's members
+    renderOrgSettings();  // selected org's lifecycle panel
   }
 
   async function loadDocuments() {
@@ -1512,6 +1535,119 @@
   function cleanErr(err) {
     const m = String(err.message || err).match(/"detail"\s*:\s*"([^"]+)"/);
     return m ? m[1] : '';
+  }
+
+  // === Org lifecycle (Settings > Organization), admin only ===
+  const META_LABEL = "color:var(--concrete);font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.12em;";
+
+  function renderOrgSettings() {
+    const panel = document.getElementById('orgSettingsPanel');
+    const body = document.getElementById('orgSettingsBody');
+    if (!panel || !body) return;
+    if (!lockeAdminMode) { panel.style.display = 'none'; return; }
+    panel.style.display = '';
+    const org = selectedOrg();
+    if (!org) { body.innerHTML = `<div class="empty"><div class="empty-sub">No organization selected.</div></div>`; return; }
+    const status = org.status || 'active';
+    const archived = status === 'archived';
+    const suspended = status === 'suspended';
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:160px 1fr;gap:14px 24px;font-size:13px;align-items:center;">
+        <div style="${META_LABEL}">Name</div><div style="color:var(--navy);">${escapeHtml(org.name)}</div>
+        <div style="${META_LABEL}">Slug</div><div style="color:var(--navy);font-family:'IBM Plex Mono',monospace;">${escapeHtml(org.slug || '')}</div>
+        <div style="${META_LABEL}">Status</div><div style="color:var(--navy);">${escapeHtml(status)}</div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:16px;flex-wrap:wrap;">
+        ${archived ? '' : `<a href="#" class="note-edit" style="margin-left:0;" onclick="return orgEdit(event)">Edit</a>`}
+        ${archived ? '' : `<a href="#" class="note-edit" onclick="return orgSetStatus(event,'${suspended ? 'active' : 'suspended'}')">${suspended ? 'Unsuspend' : 'Suspend'}</a>`}
+        ${archived ? '' : `<a href="#" class="note-edit" onclick="return orgSetStatus(event,'archived')">Archive</a>`}
+        <a href="#" class="note-edit" style="color:var(--oxide);${archived ? 'margin-left:0;' : ''}" onclick="return orgDelete(event)">Delete</a>
+      </div>
+      <div id="orgSettingsStatus" class="form-help" style="margin-top:10px;min-height:1px;"></div>`;
+  }
+
+  function orgEdit(event) {
+    event.preventDefault();
+    const org = selectedOrg();
+    if (!org) return false;
+    document.getElementById('orgSettingsBody').innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;">
+        <div class="form-field" style="flex:1 1 220px;">
+          <label class="form-label" for="orgEditName">Name</label>
+          <input class="form-input" id="orgEditName" value="${escapeHtml(org.name)}">
+        </div>
+        <div class="form-field" style="flex:1 1 180px;">
+          <label class="form-label" for="orgEditSlug">Slug</label>
+          <input class="form-input" id="orgEditSlug" value="${escapeHtml(org.slug || '')}">
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:16px;">
+        <a href="#" class="note-edit" style="margin-left:0;" onclick="return orgSaveEdit(event)">Save</a>
+        <a href="#" class="note-edit" style="color:var(--concrete);" onclick="return orgCancelEdit(event)">Cancel</a>
+      </div>
+      <div id="orgSettingsStatus" class="form-help" style="margin-top:10px;"></div>`;
+    document.getElementById('orgEditName').focus();
+    return false;
+  }
+
+  async function orgSaveEdit(event) {
+    event.preventDefault();
+    const name = (document.getElementById('orgEditName').value || '').trim();
+    const slug = (document.getElementById('orgEditSlug').value || '').trim();
+    const status = document.getElementById('orgSettingsStatus');
+    if (!name || !slug) { status.textContent = 'Name and slug are required.'; return false; }
+    try {
+      await adminApi('PATCH', `/api/admin/orgs/${adminSelectedOrgId}`, { name, slug });
+      const org = selectedOrg();
+      if (org) { org.name = name; org.slug = slug; }
+      populateNavOrgSelect();
+      applyAdminOrgLabel();
+      renderOrgSettings();
+    } catch (err) {
+      console.error('Org edit failed:', err);
+      status.textContent = 'Could not save. ' + cleanErr(err);
+    }
+    return false;
+  }
+
+  function orgCancelEdit(event) { event.preventDefault(); renderOrgSettings(); return false; }
+
+  async function orgSetStatus(event, newStatus) {
+    event.preventDefault();
+    const labels = { active: 'unsuspend', suspended: 'suspend', archived: 'archive' };
+    if (!confirm(`Are you sure you want to ${labels[newStatus] || 'update'} this organization?`)) return false;
+    try {
+      await adminApi('PATCH', `/api/admin/orgs/${adminSelectedOrgId}`, { status: newStatus });
+      const org = selectedOrg();
+      if (org) org.status = newStatus;
+      renderOrgSettings();
+    } catch (err) {
+      console.error('Org status change failed:', err);
+      const s = document.getElementById('orgSettingsStatus');
+      if (s) s.textContent = 'Could not update status. ' + cleanErr(err);
+    }
+    return false;
+  }
+
+  async function orgDelete(event) {
+    event.preventDefault();
+    const org = selectedOrg();
+    if (!org) return false;
+    if (!confirm(`Permanently delete "${org.name}"? This cannot be undone. (Orgs with documents are blocked; archive instead.)`)) return false;
+    try {
+      await adminApi('DELETE', `/api/admin/orgs/${adminSelectedOrgId}`);
+      // Drop it from local state and re-point the whole portal at another org.
+      adminOrgs = adminOrgs.filter(o => o.id !== adminSelectedOrgId);
+      adminSelectedOrgId = adminOrgs.length ? adminOrgs[0].id : null;
+      populateNavOrgSelect();
+      document.getElementById('adminOrgSwitcher').style.display = adminOrgs.length ? 'block' : 'none';
+      onOrgChange();
+    } catch (err) {
+      console.error('Org delete failed:', err);
+      const s = document.getElementById('orgSettingsStatus');
+      if (s) s.textContent = 'Could not delete. ' + (cleanErr(err) || 'It may still have documents; archive it instead.');
+    }
+    return false;
   }
 
   // The admin per-org endpoint returns a flat list; reshape it to the same
