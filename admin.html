@@ -1013,12 +1013,14 @@
         </div>`;
 
       el.innerHTML = notice + (members.length
-        ? `<table class="table"><thead><tr><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>${members.map(staffMemberRow).join('')}</tbody></table>`
+        ? `<table class="table"><thead><tr><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>${members.map(staffMemberRow).join('')}</tbody></table>
+           <div class="cards">${members.map(staffMemberCard).join('')}</div>`
         : '<div class="empty"><div class="empty-sub">No staff members.</div></div>');
       if (!linked) document.getElementById('btnLinkClerk').addEventListener('click', linkInternalClerk);
 
       pendEl.innerHTML = pending.length
-        ? `<table class="table"><thead><tr><th>Email</th><th>Clerk role</th><th></th></tr></thead><tbody>${pending.map(staffPendingRow).join('')}</tbody></table>`
+        ? `<table class="table"><thead><tr><th>Email</th><th>Clerk role</th><th></th></tr></thead><tbody>${pending.map(staffPendingRow).join('')}</tbody></table>
+           <div class="cards">${pending.map(staffPendingCard).join('')}</div>`
         : '<div class="empty"><div class="empty-sub">No pending invitations.</div></div>';
     } catch (err) {
       el.innerHTML = `<div class="empty"><div class="empty-sub">${escapeHtml(err.message)}</div></div>`;
@@ -1051,6 +1053,46 @@
       <td><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(p.clerk_role || '—')}</code></td>
       <td style="text-align:right;">${p.id ? `<button class="btn-link" style="color:var(--oxide);" onclick='revokeStaffInvite("${p.id}","${escapeHtml(p.email || '')}")'>Revoke</button>` : ''}</td>
     </tr>`;
+  }
+
+  // Mobile card equivalents (shown at <=700px; tables hidden).
+  function staffMemberCard(m) {
+    const locked = !!m.locked_at;
+    const status = locked ? 'suspended' : (m.status || '');
+    const badge = locked ? 'suspended' : (m.status === 'active' ? 'active' : 'archived');
+    const isSelf = lockeUser && String(m.id) === String(lockeUser.id);
+    const targetRole = m.role === 'locke_admin' ? 'locke_staff' : 'locke_admin';
+    const targetLabel = m.role === 'locke_admin' ? 'Make staff' : 'Make admin';
+    return `
+      <div class="card">
+        <div class="card-row">
+          <div class="card-title">${escapeHtml(m.email)}</div>
+          <span class="badge badge-${badge}">${escapeHtml(status)}</span>
+        </div>
+        ${m.name ? `<div class="card-sub" style="margin-top:4px;">${escapeHtml(m.name)}</div>` : ''}
+        <div class="card-field">
+          <div class="card-field-label">Role</div>
+          <div class="card-field-value"><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(STAFF_ROLE_LABELS[m.role] || m.role)}</code></div>
+        </div>
+        ${isSelf ? '<div class="card-sub" style="margin-top:10px;">This is you.</div>' : `
+          <div class="card-actions">
+            <button class="btn-link" onclick='toggleStaffRole("${m.id}","${targetRole}")'>${targetLabel}</button>
+            <button class="btn-link" onclick='toggleSuspendStaff("${m.id}",${locked})'>${locked ? 'Unsuspend' : 'Suspend'}</button>
+            <button class="btn-link" style="color:var(--oxide);" onclick='deleteStaff("${m.id}")'>Delete</button>
+          </div>`}
+      </div>`;
+  }
+
+  function staffPendingCard(p) {
+    return `
+      <div class="card">
+        <div class="card-row"><div class="card-title">${escapeHtml(p.email || '—')}</div></div>
+        <div class="card-field">
+          <div class="card-field-label">Clerk role</div>
+          <div class="card-field-value"><code style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${escapeHtml(p.clerk_role || '—')}</code></div>
+        </div>
+        ${p.id ? `<div class="card-actions"><button class="btn-link" style="color:var(--oxide);" onclick='revokeStaffInvite("${p.id}","${escapeHtml(p.email || '')}")'>Revoke</button></div>` : ''}
+      </div>`;
   }
 
   async function linkInternalClerk() {

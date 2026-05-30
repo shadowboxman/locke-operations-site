@@ -45,6 +45,18 @@
     padding: 0 24px;
   }
   .brand-row { display: flex; align-items: center; gap: 32px; }
+  .nav-toggle {
+    display: none;
+    background: none;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    color: var(--navy);
+    cursor: pointer;
+    padding: 4px 6px;
+    margin-right: -8px;
+  }
+  .sidebar-backdrop { display: none; }
   .wordmark {
     font-family: "IBM Plex Sans", sans-serif;
     font-weight: 600;
@@ -649,7 +661,35 @@
 
   @media (max-width: 900px) {
     :root { --sidebar-w: 0px; }
-    .sidebar { display: none; }
+    .nav-toggle { display: inline-block; }
+    .shell { grid-template-columns: 1fr; }
+    /* Sidebar becomes an off-canvas drawer toggled by the hamburger. Keeps the
+       nav, the admin org switcher, and the footer reachable on phones. */
+    .sidebar {
+      position: fixed;
+      top: var(--topbar-h);
+      left: 0;
+      bottom: 0;
+      width: 264px;
+      max-width: 82vw;
+      transform: translateX(-100%);
+      transition: transform 0.22s ease;
+      z-index: 60;
+      overflow-y: auto;
+    }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      top: var(--topbar-h);
+      background: rgba(26, 35, 50, 0.45);
+      z-index: 55;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease;
+    }
+    .sidebar-backdrop.open { opacity: 1; pointer-events: auto; }
     .tiles { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
     .doc-row { grid-template-columns: 1fr auto; gap: 12px; }
@@ -669,6 +709,10 @@
     .help-link { display: none; }
     .brand-row { gap: 16px; }
     .user-row { gap: 8px; }
+    /* Admin management grids (member rows, key/value panels) stack on phones. */
+    .mgmt-row { grid-template-columns: 1fr !important; gap: 6px !important; }
+    .kv-grid { grid-template-columns: 1fr !important; gap: 2px 0 !important; }
+    .kv-grid > div:nth-child(even) { margin-bottom: 10px; }
   }
 </style>
 
@@ -686,6 +730,7 @@
   <!-- TOP BAR -->
   <header class="topbar">
     <div class="brand-row">
+      <button class="nav-toggle" id="navToggle" type="button" aria-label="Open menu">☰</button>
       <a href="index.html" class="wordmark">LOCKE <span class="dot">O</span>PERATIONS</a>
       <div class="portal-label">Client portal</div>
     </div>
@@ -718,6 +763,8 @@
 
   <!-- SHELL -->
   <div class="shell">
+
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
     <!-- SIDEBAR -->
     <aside class="sidebar">
@@ -1042,7 +1089,7 @@
         <div class="panel">
           <div class="panel-header"><div class="panel-title">Profile</div></div>
           <div class="panel-body">
-            <div style="display: grid; grid-template-columns: 160px 1fr; gap: 14px 24px; font-size: 13px;">
+            <div class="kv-grid" style="display: grid; grid-template-columns: 160px 1fr; gap: 14px 24px; font-size: 13px;">
               <div style="color: var(--concrete); font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; padding-top: 2px;">Email</div>
               <div id="profileEmail" style="color: var(--navy);">client@company.com</div>
               <div style="color: var(--concrete); font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; padding-top: 2px;">Account</div>
@@ -1138,6 +1185,23 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && document.getElementById('uiModal').classList.contains('open')) _uiClose(false);
   });
+
+  // === Mobile nav drawer (hamburger toggles the off-canvas sidebar) ===
+  (function () {
+    const toggle = document.getElementById('navToggle');
+    const sidebar = document.querySelector('.sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    function closeNav() {
+      if (sidebar) sidebar.classList.remove('open');
+      if (backdrop) backdrop.classList.remove('open');
+    }
+    if (toggle) toggle.addEventListener('click', () => {
+      if (sidebar) sidebar.classList.toggle('open');
+      if (backdrop) backdrop.classList.toggle('open');
+    });
+    if (backdrop) backdrop.addEventListener('click', closeNav);
+    window._closeNav = closeNav;  // goTo() calls this to close after navigating
+  })();
 
   // Globals populated after Clerk loads + /api/me responds.
   // Other code paths (issues form, dropdown) read these.
@@ -1522,7 +1586,7 @@
           <a href="#" class="note-edit" onclick="return portalToggleSuspend(event,'${m.id}',${locked})">${locked ? 'Unsuspend' : 'Suspend'}</a>
           <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return portalDeleteMember(event,'${m.id}')">Delete</a>`;
     return `
-      <div style="display:grid;grid-template-columns:1fr 150px 90px 190px;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--hairline);">
+      <div class="mgmt-row" style="display:grid;grid-template-columns:1fr 150px 90px 190px;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--hairline);">
         <div>
           <div style="color:var(--navy);font-weight:500;">${escapeHtml(m.email)}</div>
           ${m.name ? `<div style="color:var(--concrete);font-size:12px;margin-top:2px;">${escapeHtml(m.name)}</div>` : ''}
@@ -1535,7 +1599,7 @@
 
   function pendingRow(p) {
     return `
-      <div style="display:grid;grid-template-columns:1fr 150px auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--hairline);">
+      <div class="mgmt-row" style="display:grid;grid-template-columns:1fr 150px auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--hairline);">
         <div style="color:var(--navy);">${escapeHtml(p.email || '—')}</div>
         <div class="doc-meta">${escapeHtml(ROLE_LABELS[p.clerk_role] || p.clerk_role || 'invited')}</div>
         <div style="text-align:right;white-space:nowrap;">
@@ -1667,7 +1731,7 @@
     const archived = status === 'archived';
     const suspended = status === 'suspended';
     body.innerHTML = `
-      <div style="display:grid;grid-template-columns:160px 1fr;gap:14px 24px;font-size:13px;align-items:center;">
+      <div class="kv-grid" style="display:grid;grid-template-columns:160px 1fr;gap:14px 24px;font-size:13px;align-items:center;">
         <div style="${META_LABEL}">Name</div><div style="color:var(--navy);">${escapeHtml(org.name)}</div>
         <div style="${META_LABEL}">Slug</div><div style="color:var(--navy);font-family:'IBM Plex Mono',monospace;">${escapeHtml(org.slug || '')}</div>
         <div style="${META_LABEL}">Status</div><div style="color:var(--navy);">${escapeHtml(status)}</div>
@@ -2060,6 +2124,7 @@
     });
     document.getElementById('userDropdown').classList.remove('open');
     document.getElementById('flash').classList.remove('show');
+    if (window._closeNav) window._closeNav();  // close the mobile drawer
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
 
