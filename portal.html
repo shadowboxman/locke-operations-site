@@ -1162,7 +1162,7 @@
           <div class="panel-body" id="orgSettingsBody"></div>
         </div>
 
-        <div class="panel">
+        <div class="panel" id="notifyPanel" style="display:none;">
           <div class="panel-header"><div class="panel-title">Notifications</div></div>
           <div class="panel-body">
             <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;color:var(--navy);">
@@ -1400,6 +1400,11 @@
       const nr = document.getElementById('navRequests');
       if (nr) nr.style.display = 'none';
     }
+
+    // Notifications setting is only meaningful if the user can have requests:
+    // Locke staff (notified across client orgs) or a client whose org has the flag.
+    const notifyPanel = document.getElementById('notifyPanel');
+    if (notifyPanel && (isLockeAdmin || requestsFeatureOn)) notifyPanel.style.display = '';
 
     // Load documents (client: own org via RLS; admin: selected org via admin API).
     loadDocuments();
