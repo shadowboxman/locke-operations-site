@@ -237,7 +237,8 @@ async def me(user: dict = Depends(get_current_user)):
                    o.id AS org_id,
                    o.name AS org_name,
                    o.slug AS org_slug,
-                   o.is_internal AS org_is_internal
+                   o.is_internal AS org_is_internal,
+                   o.features AS org_features
               FROM memberships m
               JOIN organizations o ON o.id = m.org_id
              WHERE m.user_id = $1
@@ -271,6 +272,7 @@ def _serialize_membership(row: dict) -> dict:
             "name": row["org_name"],
             "slug": row["org_slug"],
             "is_internal": row["org_is_internal"],
+            "features": row.get("org_features") or {},
         },
     }
 
@@ -392,7 +394,7 @@ async def list_orgs(admin: dict = Depends(require_locke_admin)):
             SELECT
               o.id, o.clerk_org_id, o.name, o.slug,
               o.status::text AS status, o.is_internal,
-              o.created_at,
+              o.created_at, o.features,
               (SELECT count(*) FROM memberships m
                 WHERE m.org_id = o.id AND m.status = 'active') AS member_count
               FROM organizations o
@@ -410,6 +412,7 @@ async def list_orgs(admin: dict = Depends(require_locke_admin)):
                 "is_internal": r["is_internal"],
                 "created_at": r["created_at"].isoformat(),
                 "member_count": r["member_count"],
+                "features": r["features"] or {},
             }
             for r in rows
         ]
@@ -423,7 +426,7 @@ async def get_org(org_id: str, admin: dict = Depends(require_locke_admin)):
         org = await conn.fetchrow(
             """
             SELECT id, clerk_org_id, name, slug, status::text AS status,
-                   is_internal, created_at
+                   is_internal, created_at, features
               FROM organizations WHERE id = $1
             """,
             uuid.UUID(org_id),
@@ -471,6 +474,7 @@ async def get_org(org_id: str, admin: dict = Depends(require_locke_admin)):
             "status": org["status"],
             "is_internal": org["is_internal"],
             "created_at": org["created_at"].isoformat(),
+            "features": org["features"] or {},
         },
         "members": [
             {
@@ -487,6 +491,43 @@ async def get_org(org_id: str, admin: dict = Depends(require_locke_admin)):
         ],
         "pending_invitations": pending,
     }
+
+
+class SetFeatureRequest(BaseModel):
+    feature: Literal["requests"]
+    enabled: bool
+
+
+@app.patch("/api/admin/orgs/{org_id}/features")
+async def set_org_feature(
+    org_id: str,
+    payload: SetFeatureRequest,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Toggle a per-org feature flag (e.g. the Requests surface). Merges the
+    single key into organizations.features so other flags are preserved.
+    """
+    async with admin_conn() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE organizations
+               SET features = jsonb_set(coalesce(features, '{}'::jsonb),
+                                        ARRAY[$2::text], to_jsonb($3::boolean), true),
+                   updated_at = now()
+             WHERE id = $1
+            RETURNING id, features
+            """,
+            uuid.UUID(org_id), payload.feature, payload.enabled,
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Org not found")
+
+    await _audit(
+        actor_user_id=admin["id"], action="org.feature_set",
+        resource_type="organization", resource_id=row["id"], org_id=row["id"],
+        metadata={"feature": payload.feature, "enabled": payload.enabled},
+    )
+    return {"ok": True, "features": row["features"] or {}}
 
 
 @app.post("/api/admin/internal-org/link-clerk")
@@ -1656,6 +1697,178 @@ async def delete_document(
     )
 
     return {"ok": True, "id": str(doc["id"])}
+
+
+# ===============================================================
+# Phase 5: Requests (issues + feature requests), per-org flagged
+#
+# One pipeline, two kinds. Client-facing submit/list is gated by the org's
+# `requests` feature flag (checked server-side, not just hidden in the UI).
+# Admins view per-org and manage status. Email notifications are deferred.
+# ===============================================================
+
+class CreateRequestRequest(BaseModel):
+    kind: Literal["issue", "feature_request"]
+    category: Optional[str] = Field(default=None, max_length=60)
+    subject: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=10000)
+    priority: Optional[Literal["low", "normal", "high"]] = None
+
+
+RequestStatus = Literal[
+    "open", "in_progress", "resolved", "closed",
+    "under_consideration", "planned", "shipped", "declined",
+]
+
+
+class UpdateRequestStatusRequest(BaseModel):
+    status: RequestStatus
+
+
+async def _require_requests_enabled(conn, org_id) -> None:
+    """403 unless the org has the `requests` feature flag on. Server-side gate;
+    the hidden UI tab is not the boundary.
+    """
+    enabled = await conn.fetchval(
+        "SELECT coalesce((features->>'requests')::boolean, false) "
+        "FROM organizations WHERE id = $1",
+        org_id,
+    )
+    if not enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="The Requests feature is not enabled for this organization.",
+        )
+
+
+def _serialize_request(r: dict, user_id=None) -> dict:
+    return {
+        "id": str(r["id"]),
+        "kind": r["kind"],
+        "category": r["category"],
+        "subject": r["subject"],
+        "body": r["body"],
+        "priority": r["priority"],
+        "status": r["status"],
+        "created_at": r["created_at"].isoformat(),
+        "mine": user_id is not None and r.get("created_by") is not None
+                and str(r["created_by"]) == str(user_id),
+    }
+
+
+@app.get("/api/requests")
+async def list_requests(kind: Optional[str] = None, user: dict = Depends(get_current_user)):
+    """Client-facing: the caller's org requests (RLS-scoped). Flag-gated."""
+    async with admin_conn() as conn:
+        org = await _resolve_caller_upload_org(conn, user["id"])
+        await _require_requests_enabled(conn, org["id"])
+    async with user_conn(user["id"]) as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, kind::text AS kind, category, subject, body, priority,
+                   status::text AS status, created_by, created_at
+              FROM requests
+             ORDER BY created_at DESC
+            """,
+        )
+    items = [_serialize_request(dict(r), user["id"]) for r in rows]
+    if kind in ("issue", "feature_request"):
+        items = [i for i in items if i["kind"] == kind]
+    return {"requests": items}
+
+
+@app.post("/api/requests")
+async def create_request(payload: CreateRequestRequest, user: dict = Depends(get_current_user)):
+    """Client-facing submit. Org derived from the caller; flag-gated."""
+    category = payload.category if payload.kind == "issue" else None
+    async with admin_conn() as conn:
+        org = await _resolve_caller_upload_org(conn, user["id"])
+        await _require_requests_enabled(conn, org["id"])
+        row = await conn.fetchrow(
+            """
+            INSERT INTO requests (org_id, kind, category, subject, body, priority, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, kind::text AS kind, category, subject, body, priority,
+                      status::text AS status, created_by, created_at
+            """,
+            org["id"], payload.kind, category, payload.subject, payload.body,
+            payload.priority, user["id"],
+        )
+
+    await _audit(
+        actor_user_id=user["id"], action="request.created",
+        resource_type="request", resource_id=row["id"], org_id=org["id"],
+        metadata={"kind": payload.kind, "subject": payload.subject},
+    )
+    # NOTE: email notification to Locke is deferred (Resend not yet wired).
+    return _serialize_request(dict(row), user["id"])
+
+
+@app.get("/api/admin/orgs/{org_id}/requests")
+async def admin_list_org_requests(org_id: str, admin: dict = Depends(require_locke_admin)):
+    """Admin per-org list (all requests for the org, with submitter email)."""
+    async with admin_conn() as conn:
+        org = await _load_active_org(conn, org_id)
+        rows = await conn.fetch(
+            """
+            SELECT r.id, r.kind::text AS kind, r.category, r.subject, r.body,
+                   r.priority, r.status::text AS status, r.created_at,
+                   u.email AS submitter_email
+              FROM requests r
+              LEFT JOIN users u ON u.id = r.created_by
+             WHERE r.org_id = $1
+             ORDER BY r.created_at DESC
+            """,
+            org["id"],
+        )
+    return {
+        "requests": [
+            {
+                "id": str(r["id"]),
+                "kind": r["kind"],
+                "category": r["category"],
+                "subject": r["subject"],
+                "body": r["body"],
+                "priority": r["priority"],
+                "status": r["status"],
+                "created_at": r["created_at"].isoformat(),
+                "submitter_email": r["submitter_email"],
+            }
+            for r in rows
+        ],
+    }
+
+
+@app.patch("/api/admin/requests/{request_id}")
+async def admin_update_request_status(
+    request_id: str,
+    payload: UpdateRequestStatusRequest,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Locke updates a request's status (any org)."""
+    try:
+        req_uuid = uuid.UUID(request_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    async with admin_conn() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE requests SET status = $2::request_status
+             WHERE id = $1
+            RETURNING id, org_id, kind::text AS kind, subject
+            """,
+            req_uuid, payload.status,
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    await _audit(
+        actor_user_id=admin["id"], action="request.status_changed",
+        resource_type="request", resource_id=row["id"], org_id=row["org_id"],
+        metadata={"status": payload.status, "kind": row["kind"]},
+    )
+    return {"ok": True, "id": str(row["id"]), "status": payload.status}
 
 
 @app.post("/webhooks/clerk")

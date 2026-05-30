@@ -793,13 +793,13 @@
           Documents
           <span class="nav-badge" id="docCount">0</span>
         </div>
-        <div class="nav-item" data-section="issues" onclick="goTo('issues')">
+        <div class="nav-item" id="navRequests" data-section="issues" onclick="goTo('issues')">
           <svg class="nav-icon" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.4"/>
             <line x1="7" y1="4" x2="7" y2="8" stroke="currentColor" stroke-width="1.4"/>
             <circle cx="7" cy="10" r="0.7" fill="currentColor"/>
           </svg>
-          Issues
+          Requests
           <span class="nav-badge" id="issueCount">0</span>
         </div>
 
@@ -1002,31 +1002,37 @@
         <div class="page-header">
           <div>
             <div class="page-eyebrow">Workspace</div>
-            <h1>Issues</h1>
+            <h1>Requests</h1>
           </div>
           <div class="page-meta">
-            <div><span id="issueOpenLabel">0</span> open · <span id="issueResolvedLabel">0</span> resolved</div>
+            <div><span id="issueOpenLabel">0</span> open · <span id="issueResolvedLabel">0</span> total</div>
           </div>
         </div>
         <p class="greeting">
-          Tell us anything that needs our attention. We respond within one business day.
+          Report an issue or request a feature. We respond within one business day.
         </p>
 
         <div class="flash" id="flash">
-          <span class="flash-strong">Issue submitted.</span> We'll respond within one business day at <span id="flashEmail"></span>.
+          <span class="flash-strong">Submitted.</span> We'll respond within one business day at <span id="flashEmail"></span>.
         </div>
 
-        <div class="panel">
+        <div class="panel" id="requestSubmitPanel">
           <div class="panel-header">
-            <div class="panel-title">Report a new issue</div>
+            <div class="panel-title">New request</div>
           </div>
           <div class="panel-body">
             <form id="issueForm">
               <div class="form-grid">
                 <div class="form-field">
-                  <label class="form-label" for="issueType">Type <span class="req">*</span></label>
-                  <select class="form-select" id="issueType" required>
-                    <option value="">Choose one</option>
+                  <label class="form-label" for="reqKind">Kind <span class="req">*</span></label>
+                  <select class="form-select" id="reqKind">
+                    <option value="issue" selected>Issue — something needs attention</option>
+                    <option value="feature_request">Feature request — something you'd like added</option>
+                  </select>
+                </div>
+                <div class="form-field" id="reqCategoryField">
+                  <label class="form-label" for="reqCategory">Type</label>
+                  <select class="form-select" id="reqCategory">
                     <option value="workflow">Workflow not working as expected</option>
                     <option value="change">Change request</option>
                     <option value="question">Question</option>
@@ -1035,19 +1041,20 @@
                   </select>
                 </div>
                 <div class="form-field">
-                  <label class="form-label" for="issuePriority">Priority</label>
-                  <select class="form-select" id="issuePriority">
-                    <option value="normal">Normal · Response within 1 business day</option>
-                    <option value="urgent">Urgent · Workflow is blocking work</option>
+                  <label class="form-label" for="reqPriority">Priority</label>
+                  <select class="form-select" id="reqPriority">
+                    <option value="normal" selected>Normal</option>
+                    <option value="high">High · blocking work</option>
+                    <option value="low">Low</option>
                   </select>
                 </div>
                 <div class="form-field full">
-                  <label class="form-label" for="issueSubject">Subject <span class="req">*</span></label>
-                  <input class="form-input" type="text" id="issueSubject" maxlength="120" required placeholder="Short description of what's going on">
+                  <label class="form-label" for="reqSubject">Subject <span class="req">*</span></label>
+                  <input class="form-input" type="text" id="reqSubject" maxlength="200" required placeholder="Short description">
                 </div>
                 <div class="form-field full">
-                  <label class="form-label" for="issueBody">Details <span class="req">*</span></label>
-                  <textarea class="form-textarea" id="issueBody" required placeholder="What happened, when, what you expected instead. Specific examples help us respond faster."></textarea>
+                  <label class="form-label" for="reqBody">Details <span class="req">*</span></label>
+                  <textarea class="form-textarea" id="reqBody" required placeholder="What's going on, or what you'd like. Specific examples help us respond faster."></textarea>
                   <div class="form-help">Don't include sensitive client data here. If we need it, we'll request it through a secure channel.</div>
                 </div>
               </div>
@@ -1055,7 +1062,7 @@
                 <div class="submit-meta">
                   We'll email a response to <strong id="submitEmail">your address</strong> within one business day.
                 </div>
-                <button type="submit" class="btn-primary" id="submitBtn">Submit issue</button>
+                <button type="submit" class="btn-primary" id="submitBtn">Submit</button>
               </div>
             </form>
           </div>
@@ -1063,11 +1070,11 @@
 
         <div class="panel">
           <div class="panel-header">
-            <div class="panel-title">Your issues</div>
+            <div class="panel-title" id="requestListTitle">Your requests</div>
           </div>
           <div id="issueList">
             <div class="empty">
-              <div class="empty-title">No issues yet</div>
+              <div class="empty-title">Nothing yet</div>
               <div class="empty-sub">Anything you submit will show here with its current status.</div>
             </div>
           </div>
@@ -1146,6 +1153,19 @@
 <script>
   // === Config ===
   const API_BASE_URL = 'https://locke-operations-site-production.up.railway.app';
+
+  // Small authed fetch helper. Throws "status: body" on non-2xx.
+  async function apiJson(method, path, body) {
+    const token = await Clerk.session.getToken();
+    const opts = { method, headers: { Authorization: `Bearer ${token}` } };
+    if (body !== undefined) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(`${API_BASE_URL}${path}`, opts);
+    if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+    return res.status === 204 ? null : res.json().catch(() => null);
+  }
 
   // === Branded confirm / notice modal (replaces native confirm/alert) ===
   let _uiResolve = null;
@@ -1298,14 +1318,23 @@
       await initAdminPortal();
     }
 
-    // Re-render issues now that we know the user's email (issues are scoped per-user).
-    renderIssues();
+    // Requests feature flag for this client's own org (admins manage per
+    // selected org, so the nav stays for them).
+    requestsFeatureOn = !!(lockePrimary && lockePrimary.org && lockePrimary.org.features
+                           && lockePrimary.org.features.requests);
+    if (!isLockeAdmin && !requestsFeatureOn) {
+      const nr = document.getElementById('navRequests');
+      if (nr) nr.style.display = 'none';
+    }
 
     // Load documents (client: own org via RLS; admin: selected org via admin API).
     loadDocuments();
 
     // Team panel: admin sees the selected org's members; client sees the placeholder.
     renderTeam();
+
+    // Requests tab (client: own org if flag on; admin: selected org).
+    loadRequests();
   })();
 
   // === Documents ===
@@ -1430,7 +1459,7 @@
   function onOrgChange() {
     applyAdminOrgLabel();
     loadDocuments();      // re-scopes Documents + Overview recent activity + doc badge
-    renderIssues();       // refresh the admin placeholder/counts
+    loadRequests();       // selected org's requests
     renderTeam();         // selected org's members
     renderOrgSettings();  // selected org's lifecycle panel
   }
@@ -1464,8 +1493,8 @@
     const docCountEl = document.getElementById('docCount');
     if (docCountEl) docCountEl.textContent = data.total || 0;
 
-    // In admin mode, the Overview "recent activity" is org-scoped documents
-    // (Issues has no per-org backend). Client mode leaves recent to renderIssues.
+    // In admin mode, the Overview "recent activity" shows org-scoped documents;
+    // for clients it's driven by their requests (see loadRequests/renderRecent).
     if (lockeAdminMode) renderRecentDocs(data);
   }
 
@@ -1730,11 +1759,13 @@
     const status = org.status || 'active';
     const archived = status === 'archived';
     const suspended = status === 'suspended';
+    const reqOn = !!(org.features && org.features.requests);
     body.innerHTML = `
       <div class="kv-grid" style="display:grid;grid-template-columns:160px 1fr;gap:14px 24px;font-size:13px;align-items:center;">
         <div style="${META_LABEL}">Name</div><div style="color:var(--navy);">${escapeHtml(org.name)}</div>
         <div style="${META_LABEL}">Slug</div><div style="color:var(--navy);font-family:'IBM Plex Mono',monospace;">${escapeHtml(org.slug || '')}</div>
         <div style="${META_LABEL}">Status</div><div style="color:var(--navy);">${escapeHtml(status)}</div>
+        <div style="${META_LABEL}">Requests</div><div style="color:var(--navy);">${reqOn ? 'Enabled' : 'Disabled'} &middot; <a href="#" class="note-edit" style="margin-left:0;" onclick="return toggleOrgRequests(event)">${reqOn ? 'Disable' : 'Enable'}</a></div>
       </div>
       <div style="margin-top:16px;display:flex;gap:16px;flex-wrap:wrap;">
         ${archived ? '' : `<a href="#" class="note-edit" style="margin-left:0;" onclick="return orgEdit(event)">Edit</a>`}
@@ -1743,6 +1774,22 @@
         <a href="#" class="note-edit" style="color:var(--oxide);${archived ? 'margin-left:0;' : ''}" onclick="return orgDelete(event)">Delete</a>
       </div>
       <div id="orgSettingsStatus" class="form-help" style="margin-top:10px;min-height:1px;"></div>`;
+  }
+
+  async function toggleOrgRequests(event) {
+    event.preventDefault();
+    const org = selectedOrg();
+    if (!org) return false;
+    const cur = !!(org.features && org.features.requests);
+    try {
+      const res = await apiJson('PATCH', `/api/admin/orgs/${adminSelectedOrgId}/features`, { feature: 'requests', enabled: !cur });
+      org.features = res.features || {};
+      renderOrgSettings();
+      loadRequests();  // reflect in the Requests tab
+    } catch (err) {
+      uiAlert('Could not update the feature. ' + cleanErr(err));
+    }
+    return false;
   }
 
   function orgEdit(event) {
@@ -2170,96 +2217,112 @@
     window.location.href = 'index.html';
   });
 
-  // === Issues (mock submission, persisted to localStorage per user) ===
-  // Phase 1: stays in browser. Phase 5 will move to /api/issues with backend
-  // persistence + email notifications. Until then this is a UI smoke test.
-  function issuesKey() {
-    const email = lockeUser ? lockeUser.email : 'unknown';
-    return 'locke_issues_' + email;
-  }
-
-  function loadIssues() {
-    try {
-      return JSON.parse(localStorage.getItem(issuesKey()) || '[]');
-    } catch (e) { return []; }
-  }
-  function saveIssues(arr) {
-    localStorage.setItem(issuesKey(), JSON.stringify(arr));
-  }
-  function fmtDate(ts) {
-    const d = new Date(ts);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  }
-  const TYPE_LABEL = {
-    workflow: 'Workflow',
-    change: 'Change request',
-    question: 'Question',
-    billing: 'Billing',
-    other: 'Other'
+  // === Requests (issues + feature requests, API-backed, per-org flagged) ===
+  const REQ_STATUS_LABEL = {
+    open: 'Open', in_progress: 'In progress', resolved: 'Resolved', closed: 'Closed',
+    under_consideration: 'Under consideration', planned: 'Planned', shipped: 'Shipped', declined: 'Declined',
   };
-  const STATUS_CLASS = {
-    open: 'status-open',
-    progress: 'status-progress',
-    resolved: 'status-resolved'
+  const REQ_STATUS_CLASS = {
+    open: 'status-open', in_progress: 'status-progress', under_consideration: 'status-progress',
+    planned: 'status-progress', resolved: 'status-resolved', closed: 'status-resolved',
+    shipped: 'status-resolved', declined: 'status-resolved',
   };
-  const STATUS_LABEL = {
-    open: 'Open',
-    progress: 'In progress',
-    resolved: 'Resolved'
+  const REQ_CATEGORY_LABEL = { workflow: 'Workflow', change: 'Change request', question: 'Question', billing: 'Billing', other: 'Other' };
+  const REQ_STATUS_OPTS = {
+    issue: ['open', 'in_progress', 'resolved', 'closed'],
+    feature_request: ['open', 'under_consideration', 'planned', 'shipped', 'declined'],
   };
+  const REQ_TERMINAL = ['resolved', 'closed', 'shipped', 'declined'];
 
-  function renderIssues() {
-    const listEl = document.getElementById('issueList');
+  let requestsFeatureOn = false;  // client: does my org have the flag?
 
-    // Admin mode: issues are a per-user localStorage mock with no backend, so
-    // they are NOT org-scoped. Showing the admin's personal mock against a
-    // client org would be misleading. Render an honest placeholder instead.
-    if (lockeAdminMode) {
-      document.getElementById('issueCount').textContent = 0;
-      document.getElementById('issueOpenLabel').textContent = 0;
-      document.getElementById('issueResolvedLabel').textContent = 0;
-      listEl.innerHTML = `
-        <div class="empty">
-          <div class="empty-title">Not available in admin view</div>
-          <div class="empty-sub">Issue reporting is a client-facing feature and isn't yet backed per-organization. It will appear here once the issues backend ships.</div>
-        </div>`;
-      // Recent activity in admin mode is driven by documents (see loadDocuments).
-      return;
-    }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
 
-    const issues = loadIssues();
-    const open = issues.filter(i => i.status !== 'resolved').length;
-    const resolved = issues.filter(i => i.status === 'resolved').length;
-    document.getElementById('issueCount').textContent = open;
-    document.getElementById('issueOpenLabel').textContent = open;
-    document.getElementById('issueResolvedLabel').textContent = resolved;
+  function reqEmpty(sub, title) {
+    return `<div class="empty">${title ? `<div class="empty-title">${escapeHtml(title)}</div>` : ''}<div class="empty-sub">${escapeHtml(sub)}</div></div>`;
+  }
 
-    if (issues.length === 0) {
-      listEl.innerHTML = `
-        <div class="empty">
-          <div class="empty-title">No issues yet</div>
-          <div class="empty-sub">Anything you submit will show here with its current status.</div>
-        </div>`;
-      renderRecent([]);
-      return;
-    }
+  function setReqCounts(open, total) {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('issueCount', open); set('issueOpenLabel', open); set('issueResolvedLabel', total);
+  }
 
-    listEl.innerHTML = issues.map(i => `
+  function reqMetaLabel(r) {
+    return r.kind === 'feature_request' ? 'Feature request' : (REQ_CATEGORY_LABEL[r.category] || 'Issue');
+  }
+
+  function requestRow(r, admin) {
+    const statusCell = admin
+      ? `<select class="form-select" style="padding:4px 6px;font-size:12px;width:auto;min-width:130px;" onchange="adminSetRequestStatus('${r.id}', this.value)">
+           ${(REQ_STATUS_OPTS[r.kind] || REQ_STATUS_OPTS.issue).map(s => `<option value="${s}"${s === r.status ? ' selected' : ''}>${REQ_STATUS_LABEL[s]}</option>`).join('')}
+         </select>`
+      : `<div class="issue-status ${REQ_STATUS_CLASS[r.status] || ''}">${REQ_STATUS_LABEL[r.status] || r.status}</div>`;
+    return `
       <div class="issue-row">
-        <div class="issue-subject">${escapeHtml(i.subject)}</div>
-        <div class="issue-type">${TYPE_LABEL[i.type] || i.type}</div>
-        <div class="issue-date">${fmtDate(i.ts)}</div>
-        <div class="issue-status ${STATUS_CLASS[i.status]}">${STATUS_LABEL[i.status]}</div>
-      </div>
-    `).join('');
-
-    renderRecent(issues);
+        <div class="issue-subject">${escapeHtml(r.subject)}${admin && r.submitter_email ? `<div style="font-weight:400;color:var(--concrete);font-size:12px;">${escapeHtml(r.submitter_email)}</div>` : ''}</div>
+        <div class="issue-type">${escapeHtml(reqMetaLabel(r))}</div>
+        <div class="issue-date">${fmtDate(r.created_at)}</div>
+        ${statusCell}
+      </div>`;
   }
 
-  function renderRecent(issues) {
+  function renderRequestList(items, admin) {
+    const listEl = document.getElementById('issueList');
+    const open = items.filter(i => !REQ_TERMINAL.includes(i.status)).length;
+    setReqCounts(open, items.length);
+    document.getElementById('requestListTitle').textContent = admin ? 'Requests' : 'Your requests';
+    listEl.innerHTML = items.length
+      ? items.map(i => requestRow(i, admin)).join('')
+      : reqEmpty(admin ? 'No requests from this organization yet.' : 'Anything you submit will show here with its current status.', 'Nothing yet');
+    if (!admin) renderRecent(items);
+  }
+
+  // Main entry: client sees own org (flag-gated, with submit form); admin sees
+  // the selected org's requests with status controls and no submit form.
+  async function loadRequests() {
+    const listEl = document.getElementById('issueList');
+    const submitPanel = document.getElementById('requestSubmitPanel');
+
+    if (lockeAdminMode) {
+      if (submitPanel) submitPanel.style.display = 'none';
+      const org = (adminOrgs || []).find(o => o.id === adminSelectedOrgId) || null;
+      if (!adminSelectedOrgId) { listEl.innerHTML = reqEmpty('No organization selected.'); setReqCounts(0, 0); return; }
+      const flagOn = !!(org && org.features && org.features.requests);
+      if (!flagOn) {
+        listEl.innerHTML = reqEmpty('Enable it in Settings → Organization to let this client submit issues and feature requests.', 'Requests not enabled for this org');
+        setReqCounts(0, 0);
+        return;
+      }
+      try {
+        const data = await apiJson('GET', `/api/admin/orgs/${adminSelectedOrgId}/requests`);
+        renderRequestList(data.requests || [], true);
+      } catch (err) {
+        console.error('load org requests:', err);
+        listEl.innerHTML = reqEmpty('Could not load requests.');
+      }
+      return;
+    }
+
+    // Client
+    if (submitPanel) submitPanel.style.display = requestsFeatureOn ? '' : 'none';
+    if (!requestsFeatureOn) { listEl.innerHTML = reqEmpty('Requests are not enabled for your account.'); setReqCounts(0, 0); return; }
+    try {
+      const data = await apiJson('GET', '/api/requests');
+      renderRequestList(data.requests || [], false);
+    } catch (err) {
+      console.error('load requests:', err);
+    }
+  }
+
+  function renderRecent(items) {
     const el = document.getElementById('recentActivity');
-    const recent = issues.slice(0, 4);
-    if (recent.length === 0) {
+    if (!el) return;
+    const recent = (items || []).slice(0, 4);
+    if (!recent.length) {
       el.innerHTML = `
         <div class="empty">
           <svg class="empty-mark" width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
@@ -2268,55 +2331,59 @@
             <line x1="4" y1="16" x2="28" y2="16" stroke="#1A2332" stroke-width="1.5"/>
           </svg>
           <div class="empty-title">Nothing yet</div>
-          <div class="empty-sub">Issues you submit and documents we upload will appear here.</div>
+          <div class="empty-sub">Requests you submit and documents we upload will appear here.</div>
         </div>`;
       return;
     }
-    el.innerHTML = recent.map(i => `
+    el.innerHTML = recent.map(r => `
       <div class="issue-row">
-        <div class="issue-subject">${escapeHtml(i.subject)}</div>
-        <div class="issue-type">${TYPE_LABEL[i.type] || i.type}</div>
-        <div class="issue-date">${fmtDate(i.ts)}</div>
-        <div class="issue-status ${STATUS_CLASS[i.status]}">${STATUS_LABEL[i.status]}</div>
+        <div class="issue-subject">${escapeHtml(r.subject)}</div>
+        <div class="issue-type">${escapeHtml(reqMetaLabel(r))}</div>
+        <div class="issue-date">${fmtDate(r.created_at)}</div>
+        <div class="issue-status ${REQ_STATUS_CLASS[r.status] || ''}">${REQ_STATUS_LABEL[r.status] || r.status}</div>
       </div>`).join('');
   }
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[c]));
+  function onReqKindChange() {
+    const kind = document.getElementById('reqKind').value;
+    const catField = document.getElementById('reqCategoryField');
+    if (catField) catField.style.display = kind === 'issue' ? '' : 'none';
+  }
+  (function () {
+    const k = document.getElementById('reqKind');
+    if (k) k.addEventListener('change', onReqKindChange);
+  })();
+
+  async function adminSetRequestStatus(id, status) {
+    try { await apiJson('PATCH', `/api/admin/requests/${id}`, { status }); loadRequests(); }
+    catch (err) { uiAlert('Could not update status. ' + cleanErr(err)); }
   }
 
-  document.getElementById('issueForm').addEventListener('submit', (e) => {
+  document.getElementById('issueForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const type = document.getElementById('issueType').value;
-    const priority = document.getElementById('issuePriority').value;
-    const subject = document.getElementById('issueSubject').value.trim();
-    const body = document.getElementById('issueBody').value.trim();
-    if (!type || !subject || !body) return;
-
-    const issues = loadIssues();
-    issues.unshift({
-      id: 'i_' + Date.now(),
-      type, priority, subject, body,
-      status: 'open',
-      ts: Date.now()
-    });
-    saveIssues(issues);
-    renderIssues();
-
-    // Reset form, show flash
-    document.getElementById('issueForm').reset();
-    const flash = document.getElementById('flash');
-    flash.classList.add('show');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    setTimeout(() => flash.classList.remove('show'), 6000);
+    const kind = document.getElementById('reqKind').value;
+    const category = kind === 'issue' ? (document.getElementById('reqCategory').value || null) : null;
+    const priority = document.getElementById('reqPriority').value || null;
+    const subject = document.getElementById('reqSubject').value.trim();
+    const body = document.getElementById('reqBody').value.trim();
+    if (!subject || !body) return;
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = 'Submitting...';
+    try {
+      await apiJson('POST', '/api/requests', { kind, category, subject, body, priority });
+      document.getElementById('issueForm').reset();
+      onReqKindChange();
+      const flash = document.getElementById('flash');
+      flash.classList.add('show');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(() => flash.classList.remove('show'), 6000);
+      loadRequests();
+    } catch (err) {
+      uiAlert('Could not submit. ' + cleanErr(err));
+    } finally {
+      btn.disabled = false; btn.textContent = 'Submit';
+    }
   });
-
-  // Initial render uses empty issues (lockeUser isn't loaded yet). The auth
-  // guard calls renderIssues() again once /api/me returns, which gives us
-  // the per-user storage key.
-  renderIssues();
 </script>
 </body>
 </html>
