@@ -15,6 +15,7 @@ import logging
 import os
 import sys
 import uuid
+from html import escape as _h
 from typing import Any, Literal, Optional
 
 import asyncpg
@@ -59,7 +60,7 @@ from clerk import (
     verify_webhook,
 )
 from db import admin_conn, close_pool, init_pool, user_conn
-from email_client import send_assessment_email
+from email_client import send_assessment_email, send_email
 from pdf_generator import calculate, fmt_money, generate_pdf, pdf_filename
 
 # ---------------------------------------------------------------
@@ -251,16 +252,40 @@ async def me(user: dict = Depends(get_current_user)):
     rows = [dict(r) for r in memberships]
     primary = rows[0] if rows else None
 
+    async with admin_conn() as conn:
+        notify_requests = await conn.fetchval(
+            "SELECT notify_requests FROM users WHERE id = $1", user_id
+        )
+
     return {
         "user": {
             "id": str(user["id"]),
             "email": user["email"],
             "name": user["name"],
             "clerk_user_id": user["clerk_user_id"],
+            "notify_requests": bool(notify_requests) if notify_requests is not None else True,
         },
         "primary": _serialize_membership(primary) if primary else None,
         "memberships": [_serialize_membership(r) for r in rows],
     }
+
+
+class NotificationPrefRequest(BaseModel):
+    notify_requests: bool
+
+
+@app.patch("/api/me/notifications")
+async def update_notification_pref(
+    payload: NotificationPrefRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Set the caller's own request-notification preference (per-user)."""
+    async with admin_conn() as conn:
+        await conn.execute(
+            "UPDATE users SET notify_requests = $2, updated_at = now() WHERE id = $1",
+            user["id"], payload.notify_requests,
+        )
+    return {"ok": True, "notify_requests": payload.notify_requests}
 
 
 def _serialize_membership(row: dict) -> dict:
@@ -1760,6 +1785,76 @@ def _serialize_request(r: dict, user_id=None) -> dict:
     }
 
 
+REQUEST_STATUS_EMAIL_LABEL = {
+    "open": "Open", "in_progress": "In progress", "resolved": "Resolved", "closed": "Closed",
+    "under_consideration": "Under consideration", "planned": "Planned",
+    "shipped": "Shipped", "declined": "Declined",
+}
+
+
+async def _notify_new_request(org_id, kind: str, subject: str) -> None:
+    """Email Locke staff who opted in that a client submitted a request.
+    Best-effort: swallows errors so a Resend hiccup never affects the request.
+    """
+    try:
+        async with admin_conn() as conn:
+            org_name = await conn.fetchval(
+                "SELECT name FROM organizations WHERE id = $1", org_id
+            ) or "A client"
+            recips = await conn.fetch(
+                """
+                SELECT DISTINCT u.email
+                  FROM users u
+                  JOIN memberships m ON m.user_id = u.id
+                  JOIN organizations o ON o.id = m.org_id
+                 WHERE o.is_internal = true AND m.status = 'active'
+                   AND m.role IN ('locke_admin', 'locke_staff')
+                   AND u.notify_requests = true AND u.email IS NOT NULL
+                """,
+            )
+        if not recips:
+            return
+        kind_label = "feature request" if kind == "feature_request" else "issue"
+        subj = f"New {kind_label} from {org_name}: {subject}"
+        text = (f"{org_name} submitted a {kind_label}:\n\n{subject}\n\n"
+                f"View and respond in the Locke portal.")
+        html = (f"<p><strong>{_h(org_name)}</strong> submitted a {kind_label}:</p>"
+                f"<p>{_h(subject)}</p><p>View and respond in the Locke portal.</p>")
+        for r in recips:
+            try:
+                await send_email(to_email=r["email"], subject=subj, text=text, html=html)
+            except Exception as exc:
+                log.warning("notify.new_request.send_failed to=%s err=%s", r["email"], exc)
+    except Exception as exc:
+        log.warning("notify.new_request.failed err=%s", exc)
+
+
+async def _notify_request_status(submitter_user_id, status: str, subject: str) -> None:
+    """Email the request's submitter (if opted in) that its status changed."""
+    if not submitter_user_id:
+        return
+    try:
+        async with admin_conn() as conn:
+            row = await conn.fetchrow(
+                "SELECT email, notify_requests FROM users WHERE id = $1",
+                submitter_user_id,
+            )
+        if not row or not row["notify_requests"] or not row["email"]:
+            return
+        label = REQUEST_STATUS_EMAIL_LABEL.get(status, status)
+        subj = f"Your request '{subject}' is now {label}"
+        text = (f"The status of your request '{subject}' changed to: {label}.\n\n"
+                f"View it in your Locke portal.")
+        html = (f"<p>The status of your request '<strong>{_h(subject)}</strong>' changed to: "
+                f"<strong>{_h(label)}</strong>.</p><p>View it in your Locke portal.</p>")
+        try:
+            await send_email(to_email=row["email"], subject=subj, text=text, html=html)
+        except Exception as exc:
+            log.warning("notify.status.send_failed to=%s err=%s", row["email"], exc)
+    except Exception as exc:
+        log.warning("notify.status.failed err=%s", exc)
+
+
 @app.get("/api/requests")
 async def list_requests(kind: Optional[str] = None, user: dict = Depends(get_current_user)):
     """Client-facing: the caller's org requests (RLS-scoped). Flag-gated."""
@@ -1782,7 +1877,11 @@ async def list_requests(kind: Optional[str] = None, user: dict = Depends(get_cur
 
 
 @app.post("/api/requests")
-async def create_request(payload: CreateRequestRequest, user: dict = Depends(get_current_user)):
+async def create_request(
+    payload: CreateRequestRequest,
+    background: BackgroundTasks,
+    user: dict = Depends(get_current_user),
+):
     """Client-facing submit. Org derived from the caller; flag-gated."""
     category = payload.category if payload.kind == "issue" else None
     async with admin_conn() as conn:
@@ -1804,7 +1903,8 @@ async def create_request(payload: CreateRequestRequest, user: dict = Depends(get
         resource_type="request", resource_id=row["id"], org_id=org["id"],
         metadata={"kind": payload.kind, "subject": payload.subject},
     )
-    # NOTE: email notification to Locke is deferred (Resend not yet wired).
+    # Email opted-in Locke staff after the response is sent (best-effort).
+    background.add_task(_notify_new_request, org["id"], payload.kind, payload.subject)
     return _serialize_request(dict(row), user["id"])
 
 
@@ -1847,6 +1947,7 @@ async def admin_list_org_requests(org_id: str, admin: dict = Depends(require_loc
 async def admin_update_request_status(
     request_id: str,
     payload: UpdateRequestStatusRequest,
+    background: BackgroundTasks,
     admin: dict = Depends(require_locke_admin),
 ):
     """Locke updates a request's status (any org)."""
@@ -1860,7 +1961,7 @@ async def admin_update_request_status(
             """
             UPDATE requests SET status = $2::request_status
              WHERE id = $1
-            RETURNING id, org_id, kind::text AS kind, subject
+            RETURNING id, org_id, kind::text AS kind, subject, created_by
             """,
             req_uuid, payload.status,
         )
@@ -1872,6 +1973,8 @@ async def admin_update_request_status(
         resource_type="request", resource_id=row["id"], org_id=row["org_id"],
         metadata={"status": payload.status, "kind": row["kind"]},
     )
+    # Email the submitter (if opted in) after the response is sent.
+    background.add_task(_notify_request_status, row["created_by"], payload.status, row["subject"])
     return {"ok": True, "id": str(row["id"]), "status": payload.status}
 
 

@@ -1163,6 +1163,19 @@
         </div>
 
         <div class="panel">
+          <div class="panel-header"><div class="panel-title">Notifications</div></div>
+          <div class="panel-body">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;color:var(--navy);">
+              <input type="checkbox" id="notifyRequests" onchange="saveNotifyPref(this.checked)">
+              Email me about requests
+            </label>
+            <div class="form-help" style="margin-top:8px;">
+              When on, you'll be emailed about new requests (Locke staff) or status changes on your requests (clients). <span id="notifyPrefStatus" style="color:var(--concrete);"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
           <div class="panel-header"><div class="panel-title">Security</div></div>
           <div class="panel-body">
             <p style="color: var(--navy); margin-bottom: 16px;">
@@ -1337,6 +1350,10 @@
 
     lockeUser = me.user;
     lockePrimary = me.primary;
+
+    // Notification preference toggle (per-user; default on).
+    const nrEl = document.getElementById('notifyRequests');
+    if (nrEl) nrEl.checked = lockeUser.notify_requests !== false;
 
     // Populate topbar + profile pane.
     const email = lockeUser.email;
@@ -2416,6 +2433,19 @@
     const k = document.getElementById('reqKind');
     if (k) k.addEventListener('change', onReqKindChange);
   })();
+
+  async function saveNotifyPref(checked) {
+    const st = document.getElementById('notifyPrefStatus');
+    if (st) st.textContent = 'Saving...';
+    try {
+      await apiJson('PATCH', '/api/me/notifications', { notify_requests: checked });
+      if (lockeUser) lockeUser.notify_requests = checked;
+      if (st) { st.textContent = 'Saved.'; setTimeout(() => { st.textContent = ''; }, 2000); }
+    } catch (err) {
+      console.error('Save notification pref failed:', err);
+      if (st) st.textContent = 'Could not save.';
+    }
+  }
 
   async function adminSetRequestStatus(id, status) {
     try { await apiJson('PATCH', `/api/admin/requests/${id}`, { status }); loadRequests(); }

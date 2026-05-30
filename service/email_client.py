@@ -54,6 +54,42 @@ log.info(
 RESEND_ENDPOINT = "https://api.resend.com/emails"
 
 
+async def send_email(
+    *,
+    to_email: str,
+    subject: str,
+    text: str,
+    html: str,
+    idempotency_key: str | None = None,
+) -> str:
+    """Generic transactional send (no attachment). Returns the Resend message ID.
+
+    Used for product notifications (e.g. request alerts). Auth/identity emails
+    go through Clerk, not here.
+    """
+    payload = {
+        "from": RESEND_FROM_EMAIL,
+        "to": [to_email],
+        "reply_to": RESEND_REPLY_TO,
+        "subject": subject,
+        "text": text,
+        "html": html,
+    }
+    headers = {
+        "Authorization": f"Bearer {RESEND_API_KEY}",
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotency_key or str(uuid.uuid4()),
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        r = await client.post(RESEND_ENDPOINT, json=payload, headers=headers)
+    if r.status_code >= 300:
+        log.error("resend.send failed status=%s body=%s", r.status_code, r.text[:500])
+        r.raise_for_status()
+    msg_id = r.json().get("id", "<no-id>")
+    log.info("resend.send ok to=%s id=%s subject=%r", to_email, msg_id, subject)
+    return msg_id
+
+
 def _email_body(first_name: str, midpoint_formatted: str) -> dict:
     """Plain-text + HTML versions of the email body. Mirrors playbook 06."""
     text = (
