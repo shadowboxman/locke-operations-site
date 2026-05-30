@@ -124,7 +124,24 @@
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.04em;
+    overflow: hidden;
   }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  /* Reusable avatar chip (profile photo or initials fallback), brand-styled. */
+  .avatar-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--navy);
+    color: var(--bone);
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    overflow: hidden;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+  .avatar-chip img { width: 100%; height: 100%; object-fit: cover; }
   .user-email {
     font-family: "IBM Plex Mono", monospace;
     font-size: 11px;
@@ -1145,6 +1162,15 @@
         <div class="panel">
           <div class="panel-header"><div class="panel-title">Profile</div></div>
           <div class="panel-body">
+            <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
+              <span class="avatar-chip" id="profileAvatar" style="width:72px;height:72px;font-size:26px;"></span>
+              <div>
+                <input type="file" id="avatarFile" accept="image/*" style="display:none">
+                <button class="btn-secondary" type="button" id="avatarUploadBtn">Upload photo</button>
+                <button class="btn-link" type="button" id="avatarRemoveBtn" style="display:none;margin-left:12px;">Remove</button>
+                <div id="avatarStatus" class="form-help" style="margin-top:8px;min-height:1px;">JPG or PNG, up to 5&nbsp;MB.</div>
+              </div>
+            </div>
             <div class="kv-grid" style="display: grid; grid-template-columns: 160px 1fr; gap: 14px 24px; font-size: 13px;">
               <div style="color: var(--concrete); font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; padding-top: 2px;">Email</div>
               <div id="profileEmail" style="color: var(--navy);">client@company.com</div>
@@ -1228,6 +1254,70 @@
     if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
     return res.status === 204 ? null : res.json().catch(() => null);
   }
+
+  // === Avatars (profile photo with initials fallback) ===
+  function initialsOf(name, email) {
+    const base = (name || (email || '').split('@')[0] || '');
+    const i = base.split(/\s+/).map(p => p[0]).filter(Boolean).join('');
+    return (i || '?').slice(0, 2).toUpperCase();
+  }
+  function avatarHtml(url, name, email, size) {
+    if (url) return `<span class="avatar-chip" style="width:${size}px;height:${size}px;"><img src="${url}" alt=""></span>`;
+    return `<span class="avatar-chip" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.4)}px;">${initialsOf(name, email)}</span>`;
+  }
+  // Render the signed-in user's avatar into the topbar + Settings preview.
+  function renderUserAvatars() {
+    if (!lockeUser) return;
+    const inits = initialsOf(lockeUser.name, lockeUser.email);
+    const url = lockeUser.avatar_url;
+    const topbar = document.getElementById('avatar');
+    if (topbar) topbar.innerHTML = url ? `<img src="${url}" alt="">` : inits;
+    const prof = document.getElementById('profileAvatar');
+    if (prof) prof.innerHTML = url ? `<img src="${url}" alt="">` : inits;
+    const rm = document.getElementById('avatarRemoveBtn');
+    if (rm) rm.style.display = url ? '' : 'none';
+  }
+  async function uploadAvatar(file) {
+    const st = document.getElementById('avatarStatus');
+    const contentType = file.type || 'application/octet-stream';
+    if (!contentType.startsWith('image/')) { if (st) st.textContent = 'Please choose an image file.'; return; }
+    if (st) st.textContent = 'Uploading...';
+    try {
+      const pres = await apiJson('POST', '/api/me/avatar/presign', { content_type: contentType, size_bytes: file.size });
+      const put = await fetch(pres.upload_url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+      if (!put.ok) throw new Error(`upload ${put.status}`);
+      const conf = await apiJson('POST', '/api/me/avatar/confirm', { key: pres.key });
+      lockeUser.avatar_url = conf.avatar_url;
+      renderUserAvatars();
+      if (st) { st.textContent = 'Photo updated.'; setTimeout(() => { st.textContent = 'JPG or PNG, up to 5 MB.'; }, 3000); }
+    } catch (err) {
+      console.error('avatar upload failed:', err);
+      if (st) st.textContent = 'Could not upload. ' + cleanErr(err);
+    } finally {
+      const f = document.getElementById('avatarFile');
+      if (f) f.value = '';
+    }
+  }
+  async function removeAvatar() {
+    if (!(await uiConfirm('Remove your profile photo?', { title: 'Remove photo', confirmLabel: 'Remove' }))) return;
+    try {
+      await apiJson('DELETE', '/api/me/avatar');
+      lockeUser.avatar_url = null;
+      renderUserAvatars();
+    } catch (err) {
+      uiAlert('Could not remove the photo. ' + cleanErr(err));
+    }
+  }
+  (function () {
+    const btn = document.getElementById('avatarUploadBtn');
+    const input = document.getElementById('avatarFile');
+    const rm = document.getElementById('avatarRemoveBtn');
+    if (btn && input) {
+      btn.addEventListener('click', () => input.click());
+      input.addEventListener('change', () => { if (input.files && input.files[0]) uploadAvatar(input.files[0]); });
+    }
+    if (rm) rm.addEventListener('click', removeAvatar);
+  })();
 
   // === Branded confirm / notice modal (replaces native confirm/alert) ===
   let _uiResolve = null;
@@ -1367,7 +1457,7 @@
     document.getElementById('profileEmail').textContent = email;
     document.getElementById('profileAccount').textContent = orgLabel;
     document.getElementById('topbarOrg').textContent = orgLabel;
-    document.getElementById('avatar').textContent = initials;
+    renderUserAvatars();  // topbar + Settings photo (image if set, else initials)
     document.getElementById('submitEmail').textContent = email;
     document.getElementById('flashEmail').textContent = email;
 
@@ -1698,9 +1788,12 @@
           <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return portalDeleteMember(event,'${m.id}')">Delete</a>`;
     return `
       <div class="mgmt-row" style="display:grid;grid-template-columns:1fr 150px 90px 190px;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--hairline);">
-        <div>
-          <div style="color:var(--navy);font-weight:500;">${escapeHtml(m.email)}</div>
-          ${m.name ? `<div style="color:var(--concrete);font-size:12px;margin-top:2px;">${escapeHtml(m.name)}</div>` : ''}
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+          ${avatarHtml(m.avatar_url, m.name, m.email, 30)}
+          <div style="min-width:0;">
+            <div style="color:var(--navy);font-weight:500;">${escapeHtml(m.email)}</div>
+            ${m.name ? `<div style="color:var(--concrete);font-size:12px;margin-top:2px;">${escapeHtml(m.name)}</div>` : ''}
+          </div>
         </div>
         <div id="roleCell-${m.id}" class="doc-meta" style="letter-spacing:0.06em;">${escapeHtml(ROLE_LABELS[m.role] || m.role || '')}</div>
         <div class="doc-meta">${escapeHtml(status)}</div>

@@ -221,6 +221,18 @@ async def submit(payload: SubmitPayload, background: BackgroundTasks, request: R
 # Phase 1 portal endpoints
 # ===============================================================
 
+def _avatar_url(key):
+    """Short-lived signed GET URL for a profile photo, or None. 1h TTL so it
+    persists on the page; the browser caches the image once loaded.
+    """
+    if not key:
+        return None
+    try:
+        return r2.presign_get(key, ttl=3600)
+    except Exception:
+        return None
+
+
 @app.get("/api/me")
 async def me(user: dict = Depends(get_current_user)):
     """Return the current user's identity, orgs, and per-org role.
@@ -253,9 +265,10 @@ async def me(user: dict = Depends(get_current_user)):
     primary = rows[0] if rows else None
 
     async with admin_conn() as conn:
-        notify_requests = await conn.fetchval(
-            "SELECT notify_requests FROM users WHERE id = $1", user_id
+        prefs = await conn.fetchrow(
+            "SELECT notify_requests, avatar_key FROM users WHERE id = $1", user_id
         )
+    notify_requests = prefs["notify_requests"] if prefs else None
 
     return {
         "user": {
@@ -264,6 +277,7 @@ async def me(user: dict = Depends(get_current_user)):
             "name": user["name"],
             "clerk_user_id": user["clerk_user_id"],
             "notify_requests": bool(notify_requests) if notify_requests is not None else True,
+            "avatar_url": _avatar_url(prefs["avatar_key"]) if prefs else None,
         },
         "primary": _serialize_membership(primary) if primary else None,
         "memberships": [_serialize_membership(r) for r in rows],
@@ -286,6 +300,67 @@ async def update_notification_pref(
             user["id"], payload.notify_requests,
         )
     return {"ok": True, "notify_requests": payload.notify_requests}
+
+
+# ---------------------------------------------------------------
+# Profile photo (per-user). Presigned PUT upload to R2; served via signed GET.
+# ---------------------------------------------------------------
+AVATAR_MAX_BYTES = int(os.environ.get("AVATAR_MAX_BYTES", str(5 * 1024 * 1024)))
+
+
+class AvatarPresignRequest(BaseModel):
+    content_type: str = Field(min_length=1, max_length=100)
+    size_bytes: int = Field(ge=1)
+
+
+class AvatarConfirmRequest(BaseModel):
+    key: str = Field(min_length=1, max_length=200)
+
+
+@app.post("/api/me/avatar/presign")
+async def presign_avatar(payload: AvatarPresignRequest, user: dict = Depends(get_current_user)):
+    if not payload.content_type.lower().startswith("image/"):
+        raise HTTPException(status_code=415, detail="Profile photo must be an image.")
+    if payload.size_bytes > AVATAR_MAX_BYTES:
+        raise HTTPException(status_code=413, detail=f"Image exceeds max size of {AVATAR_MAX_BYTES} bytes")
+    key = f"avatars/{user['id']}/{uuid.uuid4()}"
+    upload_url = r2.presign_put(key, content_type=payload.content_type)
+    return {"key": key, "upload_url": upload_url, "expires_in": r2.UPLOAD_URL_TTL_SECONDS}
+
+
+@app.post("/api/me/avatar/confirm")
+async def confirm_avatar(payload: AvatarConfirmRequest, user: dict = Depends(get_current_user)):
+    # Key must be in the caller's own avatar namespace; never trust it blindly.
+    if not payload.key.startswith(f"avatars/{user['id']}/"):
+        raise HTTPException(status_code=422, detail="Invalid avatar key")
+    async with admin_conn() as conn:
+        old_key = await conn.fetchval("SELECT avatar_key FROM users WHERE id = $1", user["id"])
+        await conn.execute(
+            "UPDATE users SET avatar_key = $2, updated_at = now() WHERE id = $1",
+            user["id"], payload.key,
+        )
+    if old_key and old_key != payload.key:
+        try:
+            r2.delete(old_key)
+        except Exception as exc:
+            log.warning("avatar.old_delete_failed key=%s err=%s", old_key, exc)
+    return {"ok": True, "avatar_url": _avatar_url(payload.key)}
+
+
+@app.delete("/api/me/avatar")
+async def delete_avatar(user: dict = Depends(get_current_user)):
+    async with admin_conn() as conn:
+        old_key = await conn.fetchval("SELECT avatar_key FROM users WHERE id = $1", user["id"])
+        await conn.execute(
+            "UPDATE users SET avatar_key = NULL, updated_at = now() WHERE id = $1",
+            user["id"],
+        )
+    if old_key:
+        try:
+            r2.delete(old_key)
+        except Exception as exc:
+            log.warning("avatar.delete_failed key=%s err=%s", old_key, exc)
+    return {"ok": True}
 
 
 def _serialize_membership(row: dict) -> dict:
@@ -461,7 +536,7 @@ async def get_org(org_id: str, admin: dict = Depends(require_locke_admin)):
 
         members = await conn.fetch(
             """
-            SELECT u.id, u.email, u.name, u.clerk_user_id, u.locked_at,
+            SELECT u.id, u.email, u.name, u.clerk_user_id, u.locked_at, u.avatar_key,
                    m.role::text AS role, m.status::text AS membership_status,
                    m.activated_at
               FROM memberships m
@@ -511,6 +586,7 @@ async def get_org(org_id: str, admin: dict = Depends(require_locke_admin)):
                 "status": m["membership_status"],
                 "activated_at": m["activated_at"].isoformat() if m["activated_at"] else None,
                 "locked_at": m["locked_at"].isoformat() if m["locked_at"] else None,
+                "avatar_url": _avatar_url(m["avatar_key"]),
             }
             for m in members
         ],
