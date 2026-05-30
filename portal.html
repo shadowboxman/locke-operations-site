@@ -851,9 +851,6 @@
             <div class="page-eyebrow">Workspace</div>
             <h1>Overview</h1>
           </div>
-          <div class="page-meta">
-            <div>Account · <span class="meta-strong" id="accountLabel">Your company</span></div>
-          </div>
         </div>
 
         <p class="greeting">
@@ -1351,7 +1348,6 @@
     document.getElementById('userEmail').textContent = email;
     document.getElementById('dropdownEmail').textContent = email;
     document.getElementById('profileEmail').textContent = email;
-    document.getElementById('accountLabel').textContent = orgLabel;
     document.getElementById('profileAccount').textContent = orgLabel;
     document.getElementById('topbarOrg').textContent = orgLabel;
     document.getElementById('avatar').textContent = initials;
@@ -1509,7 +1505,7 @@
   // visibly re-scopes the whole portal, not just the Documents tab.
   function applyAdminOrgLabel() {
     const name = adminSelectedOrgName();
-    ['accountLabel', 'profileAccount', 'topbarOrg'].forEach(id => {
+    ['profileAccount', 'topbarOrg'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.textContent = name;
     });
