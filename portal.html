@@ -833,7 +833,7 @@
         </div>
 
         <p class="greeting">
-          This is your portal. It holds the documents we've written for your account, and it's where you report anything that needs our attention. We respond to issues within one business day.
+          This is your portal. It holds the documents we've written for your account, and it's where you report anything that needs our attention.
         </p>
 
         <div class="tiles">
@@ -856,7 +856,7 @@
               <circle cx="12" cy="16" r="1" fill="currentColor"/>
             </svg>
             <div class="tile-title">Report an issue</div>
-            <div class="tile-sub">Something off with a workflow. A change you need. A question. Whatever it is, send it here and we'll get back to you within a business day.</div>
+            <div class="tile-sub">Something off with a workflow. A change you need. A question. Whatever it is, send it here.</div>
             <div class="tile-action">Open the form →</div>
           </div>
         </div>
@@ -908,6 +908,7 @@
                 <option value="runbook">Runbook</option>
                 <option value="monthly_review">Monthly review</option>
                 <option value="contract">Contract</option>
+                <option value="implementation">Implementation / reference (internal)</option>
               </select>
             </div>
             <input type="file" id="adminDocFile" style="display:none">
@@ -925,7 +926,7 @@
             <div id="auditList">
               <div class="empty">
                 <div class="empty-title">No audit reports yet</div>
-                <div class="empty-sub">Your audit report will appear here within five business days of your onsite visit.</div>
+                <div class="empty-sub">Your audit reports will appear here once they're ready.</div>
               </div>
             </div>
           </div>
@@ -938,7 +939,7 @@
             <div id="runbookList">
               <div class="empty">
                 <div class="empty-title">No runbooks yet</div>
-                <div class="empty-sub">Each workflow we build for you ships with a written runbook explaining how it works and how to override it.</div>
+                <div class="empty-sub">Runbooks for your workflows will appear here.</div>
               </div>
             </div>
           </div>
@@ -951,7 +952,7 @@
             <div id="reviewList">
               <div class="empty">
                 <div class="empty-title">No monthly reviews yet</div>
-                <div class="empty-sub">Once a workflow is live, you'll get a written monthly review here covering what ran, what didn't, and what we changed.</div>
+                <div class="empty-sub">Monthly reviews will appear here once available.</div>
               </div>
             </div>
           </div>
@@ -965,6 +966,21 @@
               <div class="empty">
                 <div class="empty-title">No contracts yet</div>
                 <div class="empty-sub">Signed SOWs and the master services agreement will live here once executed.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Locke-internal build records. Admin-only; clients never see this (RLS + hidden). -->
+        <div class="panel" id="implementationGroup" style="display:none; margin-top: 24px;">
+          <div class="doc-group">
+            <div class="doc-group-header">
+              <span>Implementation / reference <span style="color:var(--concrete);font-weight:400;font-size:12px;">· internal, not shown to the client</span></span>
+              <span class="doc-group-count" id="implementationCount">0 files</span>
+            </div>
+            <div id="implementationList">
+              <div class="empty">
+                <div class="empty-sub">Internal build records (stack, architecture, references) for this org. Don't store credentials here — keep those in the secrets manager and reference their location.</div>
               </div>
             </div>
           </div>
@@ -1009,11 +1025,11 @@
           </div>
         </div>
         <p class="greeting">
-          Report an issue or request a feature. We respond within one business day.
+          Report an issue or request a feature.
         </p>
 
         <div class="flash" id="flash">
-          <span class="flash-strong">Submitted.</span> We'll respond within one business day at <span id="flashEmail"></span>.
+          <span class="flash-strong">Submitted.</span> We'll follow up at <span id="flashEmail"></span>.
         </div>
 
         <div class="panel" id="requestSubmitPanel">
@@ -1060,7 +1076,7 @@
               </div>
               <div class="form-submit">
                 <div class="submit-meta">
-                  We'll email a response to <strong id="submitEmail">your address</strong> within one business day.
+                  We'll email a response to <strong id="submitEmail">your address</strong>.
                 </div>
                 <button type="submit" class="btn-primary" id="submitBtn">Submit</button>
               </div>
@@ -1344,10 +1360,12 @@
     runbook:        { list: 'runbookList',  count: 'runbookCount' },
     monthly_review: { list: 'reviewList',   count: 'reviewCount' },
     contract:       { list: 'contractList', count: 'contractCount' },
+    implementation: { list: 'implementationList', count: 'implementationCount' },
   };
   const DOC_CATEGORY_LABELS = {
     audit_report: 'Audit report', runbook: 'Runbook',
     monthly_review: 'Monthly review', contract: 'Contract',
+    implementation: 'Implementation',
   };
 
   function fmtBytes(n) {
@@ -1879,7 +1897,7 @@
   // The admin per-org endpoint returns a flat list; reshape it to the same
   // {categories, shared, total} the client endpoint returns.
   function normalizeAdminDocs(docs) {
-    const categories = { audit_report: [], runbook: [], monthly_review: [], contract: [] };
+    const categories = { audit_report: [], runbook: [], monthly_review: [], contract: [], implementation: [] };
     const shared = [];
     docs.forEach(d => {
       const base = {
@@ -1920,6 +1938,9 @@
 
   function renderDocuments(data, admin) {
     document.getElementById('docTotalLabel').textContent = data.total || 0;
+    // The implementation/reference group is Locke-internal: admin-only.
+    const ig = document.getElementById('implementationGroup');
+    if (ig) ig.style.display = admin ? '' : 'none';
     for (const [category, els] of Object.entries(DOC_CATEGORIES)) {
       const docs = (data.categories && data.categories[category]) || [];
       const countEl = document.getElementById(els.count);

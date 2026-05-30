@@ -1186,7 +1186,9 @@ async def revoke_invitation(
 # browser a raw key or a long-lived URL).
 # ===============================================================
 
-DocumentCategory = Literal["audit_report", "runbook", "monthly_review", "contract"]
+DocumentCategory = Literal["audit_report", "runbook", "monthly_review", "contract", "implementation"]
+# 'implementation' docs are Locke-internal build records; never client-visible.
+INTERNAL_CATEGORIES = {"implementation"}
 
 R2_MAX_UPLOAD_BYTES = int(os.environ.get("R2_MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))
 
@@ -1272,16 +1274,17 @@ async def confirm_document_upload(
     async with admin_conn() as conn:
         org = await _load_active_org(conn, org_id)
         storage_key = r2.build_storage_key(org["id"], doc_uuid, version=1)
+        visibility = "internal" if payload.category in INTERNAL_CATEGORIES else "client"
         row = await conn.fetchrow(
             """
             INSERT INTO documents
               (id, org_id, category, name, storage_key, version,
-               size_bytes, content_type, uploaded_by)
-            VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8)
+               size_bytes, content_type, uploaded_by, visibility)
+            VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9)
             RETURNING id, uploaded_at
             """,
             doc_uuid, org["id"], payload.category, payload.name, storage_key,
-            payload.size_bytes, payload.content_type, admin["id"],
+            payload.size_bytes, payload.content_type, admin["id"], visibility,
         )
 
     await _audit(
@@ -1317,7 +1320,7 @@ async def admin_list_org_documents(
         rows = await conn.fetch(
             """
             SELECT d.id, d.category::text AS category, d.name, d.size_bytes,
-                   d.content_type, d.uploaded_at, d.source, d.note,
+                   d.content_type, d.uploaded_at, d.source, d.note, d.visibility,
                    u.email AS uploader_email
               FROM documents d
               LEFT JOIN users u ON u.id = d.uploaded_by
@@ -1339,6 +1342,7 @@ async def admin_list_org_documents(
                 "source": r["source"],
                 "uploader_email": r["uploader_email"],
                 "note": r["note"],
+                "visibility": r["visibility"],
             }
             for r in rows
         ],
