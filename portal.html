@@ -906,8 +906,8 @@
               <select id="adminDocCategory" class="form-select" style="width:auto;min-width:170px;">
                 <option value="audit_report">Audit report</option>
                 <option value="runbook">Runbook</option>
-                <option value="monthly_review">Monthly review</option>
                 <option value="contract">Contract</option>
+                <option value="general">General</option>
                 <option value="implementation">Implementation / reference (internal)</option>
               </select>
             </div>
@@ -944,7 +944,7 @@
             </div>
           </div>
 
-          <div class="doc-group">
+          <div class="doc-group" id="monthlyGroup" style="display:none;">
             <div class="doc-group-header">
               <span>Monthly reviews</span>
               <span class="doc-group-count" id="reviewCount">0 files</span>
@@ -966,6 +966,18 @@
               <div class="empty">
                 <div class="empty-title">No contracts yet</div>
                 <div class="empty-sub">Signed SOWs and the master services agreement will live here once executed.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="doc-group">
+            <div class="doc-group-header">
+              <span>General</span>
+              <span class="doc-group-count" id="generalCount">0 files</span>
+            </div>
+            <div id="generalList">
+              <div class="empty">
+                <div class="empty-sub">Other documents will appear here.</div>
               </div>
             </div>
           </div>
@@ -1360,12 +1372,13 @@
     runbook:        { list: 'runbookList',  count: 'runbookCount' },
     monthly_review: { list: 'reviewList',   count: 'reviewCount' },
     contract:       { list: 'contractList', count: 'contractCount' },
+    general:        { list: 'generalList',  count: 'generalCount' },
     implementation: { list: 'implementationList', count: 'implementationCount' },
   };
   const DOC_CATEGORY_LABELS = {
     audit_report: 'Audit report', runbook: 'Runbook',
     monthly_review: 'Monthly review', contract: 'Contract',
-    implementation: 'Implementation',
+    general: 'General', implementation: 'Implementation',
   };
 
   function fmtBytes(n) {
@@ -1897,7 +1910,7 @@
   // The admin per-org endpoint returns a flat list; reshape it to the same
   // {categories, shared, total} the client endpoint returns.
   function normalizeAdminDocs(docs) {
-    const categories = { audit_report: [], runbook: [], monthly_review: [], contract: [], implementation: [] };
+    const categories = { audit_report: [], runbook: [], monthly_review: [], contract: [], general: [], implementation: [] };
     const shared = [];
     docs.forEach(d => {
       const base = {

@@ -1186,7 +1186,7 @@ async def revoke_invitation(
 # browser a raw key or a long-lived URL).
 # ===============================================================
 
-DocumentCategory = Literal["audit_report", "runbook", "monthly_review", "contract", "implementation"]
+DocumentCategory = Literal["audit_report", "runbook", "monthly_review", "contract", "implementation", "general"]
 # 'implementation' docs are Locke-internal build records; never client-visible.
 INTERNAL_CATEGORIES = {"implementation"}
 
@@ -1373,7 +1373,7 @@ async def list_documents(user: dict = Depends(get_current_user)):
         )
 
     grouped: dict[str, list[dict]] = {
-        "audit_report": [], "runbook": [], "monthly_review": [], "contract": [],
+        "audit_report": [], "runbook": [], "monthly_review": [], "contract": [], "general": [],
     }
     shared: list[dict] = []
     for r in rows:
