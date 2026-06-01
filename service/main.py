@@ -552,7 +552,7 @@ async def get_org(org_id: str, admin: dict = Depends(require_locke_admin)):
                    m.activated_at
               FROM memberships m
               JOIN users u ON u.id = m.user_id
-             WHERE m.org_id = $1
+             WHERE m.org_id = $1 AND m.status <> 'removed'
              ORDER BY m.activated_at NULLS LAST, u.email
             """,
             org["id"],
