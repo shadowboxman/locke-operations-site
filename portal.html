@@ -1731,36 +1731,61 @@
     return res.status === 204 ? null : res.json().catch(() => null);
   }
 
+  // Team panel works in two modes:
+  //  - Locke admin: scoped to the selected org via /api/admin/orgs/{id}.
+  //  - Client user: their own org via /api/team. client_admin can manage;
+  //    client_member sees a read-only list.
+  let teamCanManage = false;
+
+  function teamApi(method, suffix, body) {
+    const base = lockeAdminMode
+      ? `/api/admin/orgs/${adminSelectedOrgId}`
+      : '/api/team';
+    return adminApi(method, `${base}${suffix}`, body);
+  }
+
   async function renderTeam() {
     const body = document.getElementById('teamPanelBody');
     if (!body) return;
-    if (!lockeAdminMode) return; // client keeps the "Just you" placeholder
 
-    if (!adminSelectedOrgId) {
-      body.innerHTML = `<div class="empty"><div class="empty-sub">No organization selected.</div></div>`;
-      return;
+    let data, orgName;
+    if (lockeAdminMode) {
+      if (!adminSelectedOrgId) {
+        body.innerHTML = `<div class="empty"><div class="empty-sub">No organization selected.</div></div>`;
+        return;
+      }
+      body.innerHTML = `<div class="empty"><div class="empty-sub">Loading team...</div></div>`;
+      try {
+        data = await adminApi('GET', `/api/admin/orgs/${adminSelectedOrgId}`);
+      } catch (err) {
+        console.error('Failed to load team:', err);
+        body.innerHTML = `<div class="empty"><div class="empty-sub">Could not load the team for this organization.</div></div>`;
+        return;
+      }
+      teamCanManage = true;
+      orgName = adminSelectedOrgName();
+    } else {
+      body.innerHTML = `<div class="empty"><div class="empty-sub">Loading team...</div></div>`;
+      try {
+        data = await apiJson('GET', '/api/team');
+      } catch (err) {
+        console.error('Failed to load team:', err);
+        body.innerHTML = `<div class="empty"><div class="empty-sub">Could not load your team.</div></div>`;
+        return;
+      }
+      teamCanManage = data.caller_role === 'client_admin';
+      orgName = (data.org && data.org.name) || 'your organization';
     }
-    body.innerHTML = `<div class="empty"><div class="empty-sub">Loading team...</div></div>`;
-    let data;
-    try {
-      data = await adminApi('GET', `/api/admin/orgs/${adminSelectedOrgId}`);
-    } catch (err) {
-      console.error('Failed to load team:', err);
-      body.innerHTML = `<div class="empty"><div class="empty-sub">Could not load the team for this organization.</div></div>`;
-      return;
-    }
+
     const members = data.members || [];
     const pending = data.pending_invitations || [];
     membersById = {};
     members.forEach(m => { membersById[m.id] = m; });
 
-    body.innerHTML = `
-      <div class="panel-body" style="padding-top:4px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
-          <div class="form-help" style="margin:0;">Members of <strong style="color:var(--navy);">${escapeHtml(adminSelectedOrgName())}</strong>.</div>
-          <button class="btn-primary" type="button" onclick="togglePortalInvite()">Invite user</button>
-        </div>
-
+    const inviteButton = teamCanManage
+      ? `<button class="btn-primary" type="button" onclick="togglePortalInvite()">Invite user</button>`
+      : '';
+    const inviteForm = teamCanManage ? `
         <div id="portalInviteForm" style="display:none;border:1px solid var(--hairline-strong);background:var(--bone);padding:14px;margin-bottom:18px;">
           <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;">
             <div class="form-field" style="flex:1 1 240px;">
@@ -1777,8 +1802,15 @@
             <button class="btn-primary" type="button" onclick="portalInviteUser()">Send invitation</button>
           </div>
           <div id="portalInviteStatus" class="form-help" style="margin-top:10px;min-height:1px;"></div>
-        </div>
+        </div>` : '';
 
+    body.innerHTML = `
+      <div class="panel-body" style="padding-top:4px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+          <div class="form-help" style="margin:0;">Members of <strong style="color:var(--navy);">${escapeHtml(orgName)}</strong>.</div>
+          ${inviteButton}
+        </div>
+        ${inviteForm}
         ${members.length ? members.map(memberRow).join('') : `<div class="empty"><div class="empty-sub">No active members yet.</div></div>`}
 
         ${pending.length ? `
@@ -1790,13 +1822,17 @@
   function memberRow(m) {
     const locked = !!m.locked_at;
     const status = locked ? 'suspended' : (m.status || '');
-    // You can't manage your own account from here (no self-suspend/-delete).
     const isSelf = lockeUser && String(m.id) === String(lockeUser.id);
-    const actions = isSelf
-      ? `<span class="doc-meta">You</span>`
-      : `<a href="#" class="note-edit" style="margin-left:0;" onclick="return portalEditRole(event,'${m.id}')">Role</a>
+    // Read-only viewers (client members) get no action column; managers get
+    // the full set, except their own row which shows "You".
+    let actions = '';
+    if (isSelf) {
+      actions = `<span class="doc-meta">You</span>`;
+    } else if (teamCanManage) {
+      actions = `<a href="#" class="note-edit" style="margin-left:0;" onclick="return portalEditRole(event,'${m.id}')">Role</a>
           <a href="#" class="note-edit" onclick="return portalToggleSuspend(event,'${m.id}',${locked})">${locked ? 'Unsuspend' : 'Suspend'}</a>
           <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return portalDeleteMember(event,'${m.id}')">Delete</a>`;
+    }
     return `
       <div class="mgmt-row" style="display:grid;grid-template-columns:1fr 150px 90px 190px;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--hairline);">
         <div style="display:flex;align-items:center;gap:10px;min-width:0;">
@@ -1818,7 +1854,7 @@
         <div style="color:var(--navy);">${escapeHtml(p.email || '—')}</div>
         <div class="doc-meta">${escapeHtml(ROLE_LABELS[p.clerk_role] || p.clerk_role || 'invited')}</div>
         <div style="text-align:right;white-space:nowrap;">
-          ${p.id ? `<a href="#" class="note-edit" style="margin-left:0;color:var(--oxide);" onclick="return portalRevokeInvitation(event,'${p.id}','${escapeHtml(p.email || '')}')">Revoke</a>` : ''}
+          ${(p.id && teamCanManage) ? `<a href="#" class="note-edit" style="margin-left:0;color:var(--oxide);" onclick="return portalRevokeInvitation(event,'${p.id}','${escapeHtml(p.email || '')}')">Revoke</a>` : ''}
         </div>
       </div>`;
   }
@@ -1835,7 +1871,7 @@
     if (!email) { status.textContent = 'Enter an email address.'; return; }
     status.textContent = 'Sending invitation...';
     try {
-      await adminApi('POST', `/api/admin/orgs/${adminSelectedOrgId}/invitations`, { email, role });
+      await teamApi('POST', `/invitations`, { email, role });
       await renderTeam();
     } catch (err) {
       console.error('Invite failed:', err);
@@ -1865,7 +1901,7 @@
     const sel = document.getElementById('roleEdit-' + id);
     if (!sel) return false;
     try {
-      await adminApi('PATCH', `/api/admin/orgs/${adminSelectedOrgId}/members/${id}`, { role: sel.value });
+      await teamApi('PATCH', `/members/${id}`, { role: sel.value });
       await renderTeam();
     } catch (err) {
       console.error('Role update failed:', err);
@@ -1885,7 +1921,7 @@
     const verb = locked ? 'unsuspend' : 'suspend';
     if (!(await uiConfirm(`${locked ? 'Unsuspend' : 'Suspend'} this member?`, { title: locked ? 'Unsuspend member' : 'Suspend member', confirmLabel: locked ? 'Unsuspend' : 'Suspend' }))) return false;
     try {
-      await adminApi('POST', `/api/admin/orgs/${adminSelectedOrgId}/members/${id}/${verb}`, {});
+      await teamApi('POST', `/members/${id}/${verb}`, {});
       await renderTeam();
     } catch (err) {
       console.error('Suspend toggle failed:', err);
@@ -1903,7 +1939,7 @@
     // thing for them; only the superadmin spans multiple orgs.
     if (!(await uiConfirm(`Delete ${who} from the system entirely? Their login is revoked and their account removed. This cannot be undone.`, { title: 'Delete user', confirmLabel: 'Delete' }))) return false;
     try {
-      await adminApi('DELETE', `/api/admin/orgs/${adminSelectedOrgId}/members/${id}`);
+      await teamApi('DELETE', `/members/${id}`);
       await renderTeam();
     } catch (err) {
       console.error('Delete user failed:', err);
@@ -1916,7 +1952,7 @@
     event.preventDefault();
     if (!(await uiConfirm(`Revoke the invitation${email ? ' for ' + email : ''}?`, { title: 'Revoke invitation', confirmLabel: 'Revoke' }))) return false;
     try {
-      await adminApi('DELETE', `/api/admin/orgs/${adminSelectedOrgId}/invitations/${invId}`);
+      await teamApi('DELETE', `/invitations/${invId}`);
       await renderTeam();
     } catch (err) {
       console.error('Revoke failed:', err);

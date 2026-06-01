@@ -402,6 +402,17 @@ class UpdateMemberRoleRequest(BaseModel):
     role: Literal["locke_admin", "locke_staff", "client_admin", "client_member"]
 
 
+class ClientInviteRequest(BaseModel):
+    """Client-admin self-service invite. Client roles only by construction;
+    Locke roles are not assignable from the client surface."""
+    email: EmailStr
+    role: Literal["client_admin", "client_member"] = "client_member"
+
+
+class ClientRoleRequest(BaseModel):
+    role: Literal["client_admin", "client_member"]
+
+
 def _locke_role_to_clerk_role(locke_role: str) -> str:
     """Map our four-role model to Clerk's two defaults (free tier)."""
     return "org:admin" if locke_role in ("locke_admin", "client_admin") else "org:member"
@@ -1274,6 +1285,301 @@ async def revoke_invitation(
         metadata={"clerk_invitation_id": clerk_invitation_id},
     )
 
+    return {"ok": True}
+
+
+# ===============================================================
+# Client team self-management (/api/team)
+#
+# Mirrors the admin member endpoints but scoped to the caller's OWN client
+# org. Reads are open to any active client member; writes require the caller
+# to be a client_admin of that org. These endpoints can never touch Locke
+# staff, grant Locke roles, or reach another org: the org is resolved from
+# the caller's own membership, the role models reject Locke roles, and the
+# shared guards block acting on any Locke-role user.
+# ===============================================================
+async def _resolve_caller_client_org(conn, user_id, *, require_admin: bool = False) -> dict:
+    """Resolve the caller's single client org and their role in it.
+
+    Refuses Locke staff and multi-org callers (they manage teams via /admin).
+    With require_admin, the caller must be client_admin of that org.
+    """
+    rows = await conn.fetch(
+        """
+        SELECT o.id, o.clerk_org_id, o.name, o.status::text AS status,
+               o.is_internal, m.role::text AS caller_role
+          FROM memberships m
+          JOIN organizations o ON o.id = m.org_id
+         WHERE m.user_id = $1 AND m.status = 'active'
+        """,
+        user_id,
+    )
+    non_internal = [dict(r) for r in rows if not r["is_internal"]]
+    if len(non_internal) != 1:
+        # No client org, or a Locke/multi-org caller: not a client-team user.
+        raise HTTPException(
+            status_code=403,
+            detail="Team self-management is only available to client organization members.",
+        )
+    org = non_internal[0]
+    if org["status"] != "active":
+        raise HTTPException(status_code=409, detail="Organization is not active")
+    if require_admin and org["caller_role"] != "client_admin":
+        raise HTTPException(status_code=403, detail="Only a client admin can manage the team.")
+    return org
+
+
+async def _guard_last_client_admin(conn, org_id, target_user_id) -> None:
+    """Block an action that would leave a client org with no active
+    client_admin. Locke can still recover the org from /admin, but the client
+    surface should not be able to strand itself."""
+    others = await conn.fetchval(
+        """
+        SELECT count(*) FROM memberships
+         WHERE org_id = $1 AND role = 'client_admin'
+           AND status = 'active' AND user_id <> $2
+        """,
+        org_id, target_user_id,
+    )
+    if others == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot remove, suspend, or demote the only remaining client admin.",
+        )
+
+
+@app.get("/api/team")
+async def client_list_team(user: dict = Depends(get_current_user)):
+    """Members + pending invitations for the caller's own client org.
+    Open to any active client member; caller_role tells the UI whether to
+    render management controls."""
+    async with admin_conn() as conn:
+        org = await _resolve_caller_client_org(conn, user["id"])
+        members = await conn.fetch(
+            """
+            SELECT u.id, u.email, u.name, u.clerk_user_id, u.locked_at, u.avatar_key,
+                   m.role::text AS role, m.status::text AS membership_status,
+                   m.activated_at
+              FROM memberships m
+              JOIN users u ON u.id = m.user_id
+             WHERE m.org_id = $1 AND m.status <> 'removed'
+             ORDER BY m.activated_at NULLS LAST, u.email
+            """,
+            org["id"],
+        )
+
+    pending = []
+    if org["clerk_org_id"]:
+        try:
+            clerk_invites = await list_clerk_pending_invitations(org["clerk_org_id"])
+            pending = [
+                {
+                    "id": inv.get("id"),
+                    "email": inv.get("email_address"),
+                    "clerk_role": inv.get("role"),
+                    "created_at": inv.get("created_at"),
+                }
+                for inv in clerk_invites
+            ]
+        except Exception as exc:
+            log.warning("team.invitations_fetch_failed org=%s err=%s", org["id"], exc)
+
+    return {
+        "org": {"id": str(org["id"]), "name": org["name"]},
+        "caller_role": org["caller_role"],
+        "members": [
+            {
+                "id": str(m["id"]),
+                "email": m["email"],
+                "name": m["name"],
+                "clerk_user_id": m["clerk_user_id"],
+                "role": m["role"],
+                "status": m["membership_status"],
+                "activated_at": m["activated_at"].isoformat() if m["activated_at"] else None,
+                "locked_at": m["locked_at"].isoformat() if m["locked_at"] else None,
+                "avatar_url": _avatar_url(m["avatar_key"]),
+            }
+            for m in members
+        ],
+        "pending_invitations": pending,
+    }
+
+
+@app.post("/api/team/invitations")
+async def client_invite_member(
+    payload: ClientInviteRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Client admin invites a new member to their own org. Client roles only."""
+    async with admin_conn() as conn:
+        org = await _resolve_caller_client_org(conn, user["id"], require_admin=True)
+        if not org["clerk_org_id"]:
+            raise HTTPException(status_code=409, detail="Org has no Clerk link")
+
+        existing = await conn.fetchrow(
+            """
+            SELECT u.id, o.name AS org_name
+              FROM users u
+              LEFT JOIN memberships m ON m.user_id = u.id AND m.status = 'active'
+              LEFT JOIN organizations o ON o.id = m.org_id
+             WHERE u.email = $1
+             LIMIT 1
+            """,
+            payload.email,
+        )
+        if existing:
+            org_label = existing["org_name"] or "another organization"
+            raise HTTPException(
+                status_code=409,
+                detail=f"{payload.email} is already on the platform (member of {org_label}).",
+            )
+
+    clerk_invite = await create_clerk_invitation(
+        clerk_org_id=org["clerk_org_id"],
+        email=payload.email,
+        clerk_role=_locke_role_to_clerk_role(payload.role),
+        redirect_url=SIGNUP_URL,
+    )
+
+    await _audit(
+        actor_user_id=user["id"], action="invitation.sent",
+        resource_type="invitation", org_id=org["id"],
+        metadata={"email": payload.email, "role": payload.role,
+                  "clerk_invitation_id": clerk_invite.get("id"), "via": "client_admin"},
+    )
+
+    return {"ok": True, "clerk_invitation_id": clerk_invite.get("id"),
+            "email": payload.email, "role": payload.role}
+
+
+@app.patch("/api/team/members/{user_id}")
+async def client_update_member_role(
+    user_id: str,
+    payload: ClientRoleRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Client admin changes a member's role within their own org."""
+    async with admin_conn() as conn:
+        org = await _resolve_caller_client_org(conn, user["id"], require_admin=True)
+        row = await _load_member_for_admin_action(conn, str(org["id"]), user_id)
+        # Defense in depth: target must not be Locke staff (it can't be in a
+        # client org, but the guard makes that explicit and future-proof).
+        await _guard_locke_staff_managed_internally(conn, user, row)
+        # Demoting the last client_admin would strand the client surface.
+        if row["role"] == "client_admin" and payload.role != "client_admin":
+            await _guard_last_client_admin(conn, org["id"], row["user_id"])
+
+        if row["clerk_org_id"] and row["clerk_user_id"]:
+            await update_clerk_membership_role(
+                clerk_org_id=row["clerk_org_id"],
+                clerk_user_id=row["clerk_user_id"],
+                clerk_role=_locke_role_to_clerk_role(payload.role),
+            )
+        await conn.execute(
+            "UPDATE memberships SET role = $1::user_role, updated_at = now() WHERE id = $2",
+            payload.role, row["membership_id"],
+        )
+
+    await _audit(
+        actor_user_id=user["id"], action="membership.role_changed",
+        resource_type="membership", resource_id=row["membership_id"], org_id=org["id"],
+        metadata={"email": row["email"], "old_role": row["role"],
+                  "new_role": payload.role, "via": "client_admin"},
+    )
+    return {"ok": True, "role": payload.role}
+
+
+@app.post("/api/team/members/{user_id}/suspend")
+async def client_suspend_member(user_id: str, user: dict = Depends(get_current_user)):
+    """Client admin suspends a member of their own org (reversible)."""
+    async with admin_conn() as conn:
+        org = await _resolve_caller_client_org(conn, user["id"], require_admin=True)
+        row = await _load_member_for_admin_action(conn, str(org["id"]), user_id)
+        _guard_not_self(user, row)
+        await _guard_locke_staff_managed_internally(conn, user, row)
+        if row["role"] == "client_admin":
+            await _guard_last_client_admin(conn, org["id"], row["user_id"])
+
+        if row["clerk_user_id"]:
+            await lock_clerk_user(row["clerk_user_id"])
+        await conn.execute(
+            "UPDATE users SET locked_at = now(), updated_at = now() WHERE id = $1",
+            row["user_id"],
+        )
+
+    await _audit(
+        actor_user_id=user["id"], action="user.suspended",
+        resource_type="user", resource_id=row["user_id"], org_id=org["id"],
+        metadata={"email": row["email"], "role": row["role"], "via": "client_admin"},
+    )
+    return {"ok": True}
+
+
+@app.post("/api/team/members/{user_id}/unsuspend")
+async def client_unsuspend_member(user_id: str, user: dict = Depends(get_current_user)):
+    """Client admin reverses a suspension within their own org."""
+    async with admin_conn() as conn:
+        org = await _resolve_caller_client_org(conn, user["id"], require_admin=True)
+        row = await _load_member_for_admin_action(conn, str(org["id"]), user_id)
+        await _guard_locke_staff_managed_internally(conn, user, row)
+
+        if row["clerk_user_id"]:
+            await unlock_clerk_user(row["clerk_user_id"])
+        await conn.execute(
+            "UPDATE users SET locked_at = NULL, updated_at = now() WHERE id = $1",
+            row["user_id"],
+        )
+
+    await _audit(
+        actor_user_id=user["id"], action="user.unsuspended",
+        resource_type="user", resource_id=row["user_id"], org_id=org["id"],
+        metadata={"email": row["email"], "role": row["role"], "via": "client_admin"},
+    )
+    return {"ok": True}
+
+
+@app.delete("/api/team/members/{user_id}")
+async def client_delete_member(user_id: str, user: dict = Depends(get_current_user)):
+    """Client admin hard-deletes a member of their own org."""
+    async with admin_conn() as conn:
+        org = await _resolve_caller_client_org(conn, user["id"], require_admin=True)
+        row = await _load_member_for_admin_action(conn, str(org["id"]), user_id)
+        _guard_not_self(user, row)
+        await _guard_locke_staff_managed_internally(conn, user, row)
+        if row["role"] == "client_admin":
+            await _guard_last_client_admin(conn, org["id"], row["user_id"])
+
+        deleted_email, deleted_role = row["email"], row["role"]
+        deleted_user_id = row["user_id"]
+        if row["clerk_user_id"]:
+            await delete_clerk_user(row["clerk_user_id"])
+        await conn.execute("DELETE FROM users WHERE id = $1", deleted_user_id)
+
+    await _audit(
+        actor_user_id=user["id"], action="user.deleted",
+        resource_type="user", resource_id=deleted_user_id, org_id=org["id"],
+        metadata={"email": deleted_email, "role": deleted_role, "via": "client_admin"},
+    )
+    return {"ok": True}
+
+
+@app.delete("/api/team/invitations/{clerk_invitation_id}")
+async def client_revoke_invitation(clerk_invitation_id: str, user: dict = Depends(get_current_user)):
+    """Client admin revokes a pending invitation for their own org."""
+    async with admin_conn() as conn:
+        org = await _resolve_caller_client_org(conn, user["id"], require_admin=True)
+        if not org["clerk_org_id"]:
+            raise HTTPException(status_code=409, detail="Org has no Clerk link")
+
+    await revoke_clerk_invitation(
+        clerk_org_id=org["clerk_org_id"],
+        clerk_invitation_id=clerk_invitation_id,
+    )
+    await _audit(
+        actor_user_id=user["id"], action="invitation.revoked",
+        resource_type="invitation", org_id=org["id"],
+        metadata={"clerk_invitation_id": clerk_invitation_id, "via": "client_admin"},
+    )
     return {"ok": True}
 
 
