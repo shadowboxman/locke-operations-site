@@ -1363,6 +1363,19 @@ async def client_list_team(user: dict = Depends(get_current_user)):
               FROM memberships m
               JOIN users u ON u.id = m.user_id
              WHERE m.org_id = $1 AND m.status <> 'removed'
+               -- Hide Locke staff from the client roster. They can hold a
+               -- foothold membership in a client org for support without
+               -- cluttering the client's team list. They still appear if
+               -- explicitly made a client_admin of this org.
+               AND (
+                 m.role = 'client_admin'
+                 OR NOT EXISTS (
+                   SELECT 1 FROM memberships ls
+                    WHERE ls.user_id = u.id
+                      AND ls.role IN ('locke_admin', 'locke_staff')
+                      AND ls.status = 'active'
+                 )
+               )
              ORDER BY m.activated_at NULLS LAST, u.email
             """,
             org["id"],
