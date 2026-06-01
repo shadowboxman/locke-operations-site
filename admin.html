@@ -801,13 +801,21 @@
       return;
     }
 
-    // Fetch /api/me to determine role.
+    // Fetch /api/me to determine role. The backend JIT-provisions on a miss,
+    // but retry a few times with backoff to absorb a transient blip right
+    // after a Locke staff invitation is accepted.
     let me;
-    try {
-      me = await apiGet('/api/me');
-    } catch (err) {
-      console.error('Failed to load /api/me:', err);
-      flash('Portal temporarily unavailable. Try refreshing.', 'error');
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        me = await apiGet('/api/me');
+        break;
+      } catch (err) {
+        console.error(`Failed to load /api/me (attempt ${attempt + 1}):`, err);
+      }
+      if (attempt < 4) await new Promise(r => setTimeout(r, 1200 * (attempt + 1)));
+    }
+    if (!me) {
+      flash('Setting up your account. Reload in a moment, or email hello@lockeoperations.com if it persists.', 'error');
       return;
     }
 

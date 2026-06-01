@@ -123,6 +123,13 @@ async def get_current_user(
                 )
                 return dict(row)
 
+        # JIT path: a verified Clerk user with no local row (typical right
+        # after an invitation is accepted, before the webhook commits).
+        # Provision now rather than depend on webhook timing.
+        row = await _provision_user_jit(conn, clerk_user_id)
+        if row:
+            return row
+
     log.warning("clerk.user.not_in_db clerk_id=%s", clerk_user_id)
     raise HTTPException(
         status_code=401,
@@ -152,6 +159,129 @@ async def _fetch_clerk_user_email(clerk_user_id: str) -> Optional[str]:
             return addr.get("email_address")
     addrs = data.get("email_addresses", [])
     return addrs[0].get("email_address") if addrs else None
+
+
+# ---------------------------------------------------------------
+# Just-in-time provisioning (login does not depend on webhook timing)
+# ---------------------------------------------------------------
+async def _fetch_clerk_user(clerk_user_id: str) -> Optional[dict[str, Any]]:
+    """Fetch the full Clerk user object. Returns None on any failure."""
+    if not CLERK_SECRET_KEY:
+        return None
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            f"https://api.clerk.com/v1/users/{clerk_user_id}",
+            headers={"Authorization": f"Bearer {CLERK_SECRET_KEY}"},
+        )
+    if resp.status_code != 200:
+        log.warning(
+            "clerk.api.user_fetch_failed clerk_id=%s status=%d",
+            clerk_user_id, resp.status_code,
+        )
+        return None
+    return resp.json()
+
+
+async def _fetch_clerk_org_memberships(clerk_user_id: str) -> list[dict[str, Any]]:
+    """Fetch a Clerk user's organization memberships. Returns [] on failure."""
+    if not CLERK_SECRET_KEY:
+        return []
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            f"https://api.clerk.com/v1/users/{clerk_user_id}/organization_memberships",
+            headers={"Authorization": f"Bearer {CLERK_SECRET_KEY}"},
+            params={"limit": 100},
+        )
+    if resp.status_code != 200:
+        log.warning(
+            "clerk.api.org_memberships_fetch_failed clerk_id=%s status=%d",
+            clerk_user_id, resp.status_code,
+        )
+        return []
+    data = resp.json()
+    # Clerk paginated endpoints return {"data": [...]}; tolerate a bare list.
+    if isinstance(data, dict):
+        return data.get("data") or []
+    return data if isinstance(data, list) else []
+
+
+def _map_clerk_role(clerk_role: str, is_internal: bool) -> str:
+    """Map Clerk's 2-role model (org:admin/org:member) onto our 4-role model,
+    keyed on whether the org is an internal Locke org or a client org."""
+    is_admin = clerk_role == "org:admin"
+    if is_internal:
+        return "locke_admin" if is_admin else "locke_staff"
+    return "client_admin" if is_admin else "client_member"
+
+
+async def _provision_user_jit(conn, clerk_user_id: str) -> Optional[dict[str, Any]]:
+    """Create the local users row (and mirror org memberships) directly from
+    Clerk when no local row exists yet.
+
+    Why: the Clerk JWT is already verified, so this is a real, signed-in user.
+    Relying on the organizationMembership.created / user.created webhooks to
+    have committed before the browser's first /api/me call is an unwinnable
+    race (webhooks are eventually-consistent and can lag, reorder, or drop).
+    Provisioning here makes login self-sufficient; the webhook becomes an
+    async mirror rather than a hard dependency.
+
+    Returns the users row dict, or None if Clerk has no usable email.
+    """
+    cu = await _fetch_clerk_user(clerk_user_id)
+    if not cu:
+        return None
+    email = _primary_email(cu)
+    if not email:
+        return None
+    full_name = _full_name(cu)
+
+    row = await conn.fetchrow(
+        "INSERT INTO users (clerk_user_id, email, name) "
+        "VALUES ($1, $2, $3) "
+        "ON CONFLICT (clerk_user_id) DO UPDATE "
+        "  SET email = EXCLUDED.email, "
+        "      name = COALESCE(users.name, EXCLUDED.name), "
+        "      updated_at = now() "
+        "RETURNING id, clerk_user_id, email, name",
+        clerk_user_id, email, full_name,
+    )
+    user_id = row["id"]
+    log.info(
+        "clerk.user.provisioned_jit clerk_id=%s email=%s", clerk_user_id, email
+    )
+
+    # Mirror memberships so /api/me has a primary org on the very first call.
+    # Only orgs that already exist locally are linked; unknown orgs are skipped
+    # and will be reconciled by the org webhook.
+    for m in await _fetch_clerk_org_memberships(clerk_user_id):
+        org = m.get("organization") or {}
+        clerk_org_id = org.get("id")
+        if not clerk_org_id:
+            continue
+        org_row = await conn.fetchrow(
+            "SELECT id, is_internal FROM organizations WHERE clerk_org_id = $1",
+            clerk_org_id,
+        )
+        if not org_row:
+            continue
+        locke_role = _map_clerk_role(
+            m.get("role", "org:member"), org_row["is_internal"]
+        )
+        await conn.execute(
+            "INSERT INTO memberships (user_id, org_id, role, status, activated_at) "
+            "VALUES ($1, $2, $3, 'active', now()) "
+            "ON CONFLICT (user_id, org_id) DO UPDATE "
+            "  SET status = 'active', role = EXCLUDED.role, "
+            "      activated_at = COALESCE(memberships.activated_at, now()), "
+            "      updated_at = now()",
+            user_id, org_row["id"], locke_role,
+        )
+        log.info(
+            "clerk.membership.provisioned_jit user=%s org=%s role=%s",
+            user_id, org_row["id"], locke_role,
+        )
+
+    return dict(row)
 
 
 # ---------------------------------------------------------------

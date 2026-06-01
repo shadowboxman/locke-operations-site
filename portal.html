@@ -1410,30 +1410,41 @@
       return;
     }
 
-    // Fetch /api/me with the Clerk session token.
+    // Fetch /api/me with the Clerk session token. The backend now
+    // JIT-provisions on a miss, so a 401 should be rare; we still retry a few
+    // times with backoff to absorb a transient Clerk API blip right after an
+    // invitation is accepted before showing a terminal screen.
     let me;
-    try {
-      const token = await Clerk.session.getToken();
-      const res = await fetch(`${API_BASE_URL}/api/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        // Provisioning gap: account exists in Clerk but not in Locke DB.
-        document.body.innerHTML =
-          '<div style="padding:60px;text-align:center;font-family:IBM Plex Sans,sans-serif;color:#1A2332;">' +
-          '<h1 style="font-weight:600;font-size:22px;margin-bottom:12px;">Your account isn\'t provisioned</h1>' +
-          '<p style="color:#A8A6A0;">Contact <a href="mailto:hello@lockeoperations.com" style="color:#1A2332;">hello@lockeoperations.com</a>.</p>' +
-          '</div>';
-        return;
+    let lastStatus = 0;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const token = await Clerk.session.getToken();
+        const res = await fetch(`${API_BASE_URL}/api/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        lastStatus = res.status;
+        if (res.ok) { me = await res.json(); break; }
+        if (res.status !== 401) throw new Error(`/api/me returned ${res.status}`);
+      } catch (err) {
+        console.error(`Failed to load /api/me (attempt ${attempt + 1}):`, err);
+        if (!lastStatus) lastStatus = -1;
       }
-      if (!res.ok) throw new Error(`/api/me returned ${res.status}`);
-      me = await res.json();
-    } catch (err) {
-      console.error('Failed to load /api/me:', err);
+      if (attempt < 4) await new Promise(r => setTimeout(r, 1200 * (attempt + 1)));
+    }
+
+    if (!me) {
+      const setup = lastStatus === 401;
+      const link = 'style="color:#1A2332;"';
       document.body.innerHTML =
         '<div style="padding:60px;text-align:center;font-family:IBM Plex Sans,sans-serif;color:#1A2332;">' +
-        '<h1 style="font-weight:600;font-size:22px;margin-bottom:12px;">Portal temporarily unavailable</h1>' +
-        '<p style="color:#A8A6A0;">Try refreshing in a moment. If this persists, email hello@lockeoperations.com.</p>' +
+        (setup
+          ? '<h1 style="font-weight:600;font-size:22px;margin-bottom:12px;">Setting up your account</h1>' +
+            '<p style="color:#A8A6A0;">This can take a moment right after you accept an invitation. ' +
+            '<a href="#" onclick="location.reload();return false;" ' + link + '>Reload</a>, ' +
+            'or email <a href="mailto:hello@lockeoperations.com" ' + link + '>hello@lockeoperations.com</a> if it persists.</p>'
+          : '<h1 style="font-weight:600;font-size:22px;margin-bottom:12px;">Portal temporarily unavailable</h1>' +
+            '<p style="color:#A8A6A0;"><a href="#" onclick="location.reload();return false;" ' + link + '>Reload</a>, ' +
+            'or email <a href="mailto:hello@lockeoperations.com" ' + link + '>hello@lockeoperations.com</a> if this persists.</p>') +
         '</div>';
       return;
     }
