@@ -24,6 +24,19 @@ HUBSPOT_ENDPOINT = (
     f"{HUBSPOT_PORTAL_ID}/{HUBSPOT_FORM_ID}"
 )
 
+# Optional second form for the website "contact us" message. The assessment
+# form requires the scoring fields, so a plain contact note needs its own form.
+# Unset until the form is created in HubSpot; submit_contact degrades to a
+# clear error the caller treats as best-effort.
+HUBSPOT_CONTACT_FORM_ID = (
+    os.environ.get("HUBSPOT_CONTACT_FORM_ID", "").strip().strip('"').strip("'")
+)
+HUBSPOT_CONTACT_ENDPOINT = (
+    f"https://api.hsforms.com/submissions/v3/integration/submit/"
+    f"{HUBSPOT_PORTAL_ID}/{HUBSPOT_CONTACT_FORM_ID}"
+    if HUBSPOT_CONTACT_FORM_ID else ""
+)
+
 INDUSTRY_MAP = {
     "trades": "Trades",
     "restoration": "Restoration",
@@ -85,4 +98,40 @@ async def submit(contact: dict, answers: dict, result: dict, page_uri: str | Non
         log.error("hubspot.submit failed status=%s body=%s", r.status_code, r.text[:500])
         r.raise_for_status()
     log.info("hubspot.submit ok email=%s status=%s", contact.get("email"), r.status_code)
+    return r.json() if r.text else {}
+
+
+def build_contact_payload(contact: dict, message: str, page_uri: str | None = None) -> dict:
+    """Form fields for a plain website contact submission."""
+    return {
+        "fields": [
+            {"name": "email",     "value": contact["email"]},
+            {"name": "firstname", "value": contact["first_name"]},
+            {"name": "lastname",  "value": contact["last_name"]},
+            {"name": "company",   "value": contact["company"]},
+            {"name": "message",   "value": message},
+        ],
+        "context": {
+            "pageUri": page_uri or "https://www.lockeoperations.com/#contact",
+            "pageName": "Locke Operations Contact",
+        },
+    }
+
+
+async def submit_contact(contact: dict, message: str, page_uri: str | None = None) -> dict[str, Any]:
+    """POST a contact-form submission to the dedicated HubSpot contact form.
+
+    Raises RuntimeError if HUBSPOT_CONTACT_FORM_ID is not configured, so the
+    caller can treat HubSpot capture as best-effort while email is the
+    guaranteed path. Raises on non-2xx from HubSpot.
+    """
+    if not HUBSPOT_CONTACT_ENDPOINT:
+        raise RuntimeError("HUBSPOT_CONTACT_FORM_ID not configured")
+    payload = build_contact_payload(contact, message, page_uri)
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.post(HUBSPOT_CONTACT_ENDPOINT, json=payload)
+    if r.status_code >= 300:
+        log.error("hubspot.contact failed status=%s body=%s", r.status_code, r.text[:500])
+        r.raise_for_status()
+    log.info("hubspot.contact ok email=%s status=%s", contact.get("email"), r.status_code)
     return r.json() if r.text else {}

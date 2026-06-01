@@ -140,6 +140,19 @@ class SubmitPayload(BaseModel):
     answers: Answers
     page_uri: str | None = None  # browser-supplied; we'll pass it to HubSpot
 
+
+class ContactRequest(BaseModel):
+    """Website 'contact us' message. Lighter than the assessment payload."""
+    first_name: str = Field(min_length=1, max_length=80)
+    last_name: str = Field(min_length=1, max_length=80)
+    company: str = Field(min_length=1, max_length=120)
+    email: EmailStr
+    message: str = Field(min_length=1, max_length=5000)
+    page_uri: str | None = None
+    # Honeypot: a hidden field real users never fill. Bots that auto-fill all
+    # inputs trip it and we silently accept without doing anything.
+    website: str | None = None
+
 # ---------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------
@@ -215,6 +228,86 @@ async def submit(payload: SubmitPayload, background: BackgroundTasks, request: R
         "submission_id": submission_id,
         "message": "Submission received. Your full report will arrive by email shortly.",
     }
+
+
+# ---------------------------------------------------------------
+# Contact form
+#
+# Two sinks: a notification email to hello@ (the guaranteed path; sent
+# synchronously so a failure surfaces to the visitor) and a best-effort
+# HubSpot capture (background; no-op until HUBSPOT_CONTACT_FORM_ID is set).
+# ---------------------------------------------------------------
+CONTACT_NOTIFY_EMAIL = os.environ.get(
+    "CONTACT_NOTIFY_EMAIL", "hello@lockeoperations.com"
+).strip().strip('"').strip("'")
+
+
+async def _capture_contact_hubspot(contact: dict, message: str, page_uri: str | None) -> None:
+    try:
+        await hubspot_client.submit_contact(contact=contact, message=message, page_uri=page_uri)
+    except RuntimeError:
+        # HUBSPOT_CONTACT_FORM_ID not configured yet — email already delivered.
+        log.info("contact.hubspot_skipped reason=not_configured email=%s", contact.get("email"))
+    except Exception as exc:
+        log.exception("contact.hubspot_failed email=%s err=%s", contact.get("email"), exc)
+
+
+@app.post("/api/contact")
+async def contact(payload: ContactRequest, background: BackgroundTasks, request: Request):
+    # Honeypot tripped → pretend success, do nothing. Bots get no signal.
+    if payload.website:
+        log.info("contact.honeypot_triggered email=%s", payload.email)
+        return {"ok": True, "message": "Thanks. We'll be in touch shortly."}
+
+    submission_id = str(uuid.uuid4())
+    name = f"{payload.first_name} {payload.last_name}".strip()
+    page_uri = payload.page_uri or str(request.headers.get("referer", "")) or None
+
+    subject = f"New contact form message from {name} ({payload.company})"
+    text = (
+        f"Name: {name}\n"
+        f"Company: {payload.company}\n"
+        f"Email: {payload.email}\n\n"
+        f"Message:\n{payload.message}\n"
+    )
+    html = (
+        f"<p><strong>Name:</strong> {_h(name)}<br>"
+        f"<strong>Company:</strong> {_h(payload.company)}<br>"
+        f"<strong>Email:</strong> <a href=\"mailto:{_h(payload.email)}\">{_h(payload.email)}</a></p>"
+        f"<p><strong>Message:</strong></p>"
+        f"<p style=\"white-space:pre-wrap;\">{_h(payload.message)}</p>"
+    )
+
+    # Guaranteed path: notify hello@, reply-to set to the visitor so a reply
+    # goes straight back to them. Synchronous so a failure is surfaced.
+    try:
+        await send_email(
+            to_email=CONTACT_NOTIFY_EMAIL,
+            subject=subject,
+            text=text,
+            html=html,
+            reply_to=payload.email,
+            idempotency_key=submission_id,
+        )
+    except Exception as exc:
+        log.exception("contact.email_failed submission_id=%s err=%s", submission_id, exc)
+        raise HTTPException(
+            status_code=502,
+            detail="We couldn't send your message. Please try again, or email hello@lockeoperations.com.",
+        )
+
+    # Best-effort CRM capture; never blocks or fails the visitor's submit.
+    contact_dict = {
+        "first_name": payload.first_name,
+        "last_name": payload.last_name,
+        "company": payload.company,
+        "email": payload.email,
+    }
+    background.add_task(_capture_contact_hubspot, contact_dict, payload.message, page_uri)
+
+    log.info("contact.ok submission_id=%s email=%s company=%s",
+             submission_id, payload.email, payload.company)
+    return {"ok": True, "message": "Thanks. We'll be in touch shortly."}
 
 
 # ===============================================================

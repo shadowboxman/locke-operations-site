@@ -779,6 +779,82 @@
     .section-numeral { font-size: 160px; top: 24px; right: -20px; }
     .hatch-band { height: 24px; }
   }
+
+  /* CONTACT */
+  .contact .container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+    align-items: start;
+  }
+  .contact-left h2 { font-size: 40px; margin-bottom: 20px; }
+  .contact-left p {
+    font-size: 17px;
+    color: var(--navy);
+    opacity: 0.85;
+    margin-bottom: 20px;
+    max-width: 460px;
+  }
+  .contact-left .contact-direct {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--concrete);
+  }
+  .contact-left .contact-direct a { color: var(--navy); text-decoration: none; border-bottom: 1px solid var(--hairline-strong); }
+  .contact-form {
+    border: 1px solid var(--hairline-strong);
+    background: #fff;
+    padding: 32px;
+  }
+  .contact-field { margin-bottom: 18px; }
+  .contact-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  .contact-label {
+    display: block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--navy);
+    margin-bottom: 7px;
+  }
+  .contact-input, .contact-textarea {
+    width: 100%;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 15px;
+    color: var(--navy);
+    background: var(--bone);
+    border: 1px solid var(--hairline-strong);
+    border-radius: 0;
+    padding: 11px 13px;
+    transition: border-color 0.15s ease;
+  }
+  .contact-input:focus, .contact-textarea:focus {
+    outline: none;
+    border-color: var(--navy);
+  }
+  .contact-textarea { resize: vertical; min-height: 120px; }
+  /* Honeypot: visually and semantically hidden from real users. */
+  .contact-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .contact-submit-row { display: flex; align-items: center; gap: 16px; margin-top: 6px; flex-wrap: wrap; }
+  .contact-status {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--concrete);
+    min-height: 1em;
+  }
+  .contact-status.is-ok { color: #2f7d4f; }
+  .contact-status.is-error { color: var(--oxide); }
+  @media (max-width: 860px) {
+    .contact .container { grid-template-columns: 1fr; gap: 40px; }
+    .contact-form { padding: 22px; }
+  }
 </style>
 </head>
 <body>
@@ -792,6 +868,7 @@
         <a href="#products">Products</a>
         <a href="#how">How it runs</a>
         <a href="#assess">Assessment</a>
+        <a href="#contact">Contact</a>
       </div>
       <div class="nav-right">
         <a class="nav-secondary" href="login.html">Client login</a>
@@ -1159,6 +1236,54 @@
     </div>
   </section>
 
+  <!-- CONTACT -->
+  <section class="contact" id="contact">
+    <div class="section-numeral">09</div>
+    <div class="container">
+      <div class="contact-left">
+        <div class="section-label">09 · Contact</div>
+        <h2>Rather just talk it through?</h2>
+        <p>The assessment gives you a number in three minutes. But if you'd prefer to skip it and tell us what's going on in your own words, send a note. We read every one and reply ourselves.</p>
+        <p class="contact-direct">Or email us directly: <a href="mailto:hello@lockeoperations.com">hello@lockeoperations.com</a></p>
+      </div>
+
+      <div class="contact-right">
+        <form class="contact-form" id="contactForm" novalidate>
+          <div class="contact-row">
+            <div class="contact-field">
+              <label class="contact-label" for="cFirst">First name</label>
+              <input class="contact-input" type="text" id="cFirst" name="first_name" maxlength="80" required autocomplete="given-name">
+            </div>
+            <div class="contact-field">
+              <label class="contact-label" for="cLast">Last name</label>
+              <input class="contact-input" type="text" id="cLast" name="last_name" maxlength="80" required autocomplete="family-name">
+            </div>
+          </div>
+          <div class="contact-field">
+            <label class="contact-label" for="cCompany">Company</label>
+            <input class="contact-input" type="text" id="cCompany" name="company" maxlength="120" required autocomplete="organization">
+          </div>
+          <div class="contact-field">
+            <label class="contact-label" for="cEmail">Email</label>
+            <input class="contact-input" type="email" id="cEmail" name="email" maxlength="200" required autocomplete="email">
+          </div>
+          <div class="contact-field">
+            <label class="contact-label" for="cMessage">What can we help with?</label>
+            <textarea class="contact-textarea" id="cMessage" name="message" maxlength="5000" required></textarea>
+          </div>
+          <!-- Honeypot: hidden from real users; bots that fill it are dropped. -->
+          <div class="contact-hp" aria-hidden="true">
+            <label>Website<input type="text" id="cWebsite" name="website" tabindex="-1" autocomplete="off"></label>
+          </div>
+          <div class="contact-submit-row">
+            <button class="btn-primary" type="submit" id="contactSubmit">Send message</button>
+            <span class="contact-status" id="contactStatus" role="status" aria-live="polite"></span>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+
   <!-- FOOTER -->
   <footer>
     <div class="container">
@@ -1180,13 +1305,14 @@
           <h5>Start</h5>
           <ul>
             <li><a href="assessment.html">Take the assessment</a></li>
-            <li><a href="#">Book a fit call</a></li>
+            <li><a href="#contact">Contact us</a></li>
             <li><a href="#">Read a case study</a></li>
           </ul>
         </div>
         <div class="footer-col">
           <h5>Contact</h5>
           <ul>
+            <li><a href="#contact">Send a message</a></li>
             <li><a href="mailto:hello@lockeoperations.com">hello@lockeoperations.com</a></li>
           </ul>
         </div>
@@ -1197,6 +1323,62 @@
       </div>
     </div>
   </footer>
+
+  <script>
+  // Contact form → POST /api/contact. Same endpoint-base convention as the
+  // assessment: override with window.LOCKE_API_ENDPOINT for local/staging.
+  (function () {
+    var API_BASE = (window.LOCKE_API_ENDPOINT || 'https://api.lockeoperations.com');
+    var form = document.getElementById('contactForm');
+    if (!form) return;
+    var statusEl = document.getElementById('contactStatus');
+    var btn = document.getElementById('contactSubmit');
+
+    function setStatus(msg, kind) {
+      statusEl.textContent = msg;
+      statusEl.className = 'contact-status' + (kind ? ' is-' + kind : '');
+    }
+
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var payload = {
+        first_name: document.getElementById('cFirst').value.trim(),
+        last_name:  document.getElementById('cLast').value.trim(),
+        company:    document.getElementById('cCompany').value.trim(),
+        email:      document.getElementById('cEmail').value.trim(),
+        message:    document.getElementById('cMessage').value.trim(),
+        website:    document.getElementById('cWebsite').value,
+        page_uri:   window.location.href
+      };
+      if (!payload.first_name || !payload.last_name || !payload.company || !payload.email || !payload.message) {
+        setStatus('Please fill in every field.', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      var original = btn.textContent;
+      btn.textContent = 'Sending...';
+      setStatus('', '');
+
+      try {
+        var res = await fetch(API_BASE + '/api/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('status ' + res.status);
+        form.reset();
+        setStatus("Thanks. We'll be in touch shortly.", 'ok');
+      } catch (err) {
+        console.error('Contact submit failed:', err);
+        setStatus('Something went wrong. Please email hello@lockeoperations.com.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    });
+  })();
+  </script>
 
 </body>
 </html>

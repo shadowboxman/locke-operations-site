@@ -60,17 +60,20 @@ async def send_email(
     subject: str,
     text: str,
     html: str,
+    reply_to: str | None = None,
     idempotency_key: str | None = None,
 ) -> str:
     """Generic transactional send (no attachment). Returns the Resend message ID.
 
-    Used for product notifications (e.g. request alerts). Auth/identity emails
-    go through Clerk, not here.
+    Used for product notifications (e.g. request alerts) and the website
+    contact form. reply_to defaults to RESEND_REPLY_TO (hello@); pass it to
+    route replies elsewhere, e.g. a contact submitter's own address.
+    Auth/identity emails go through Clerk, not here.
     """
     payload = {
         "from": RESEND_FROM_EMAIL,
         "to": [to_email],
-        "reply_to": RESEND_REPLY_TO,
+        "reply_to": reply_to or RESEND_REPLY_TO,
         "subject": subject,
         "text": text,
         "html": html,
