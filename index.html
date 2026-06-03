@@ -1244,7 +1244,6 @@
         <div class="section-label">09 · Contact</div>
         <h2>Rather just talk it through?</h2>
         <p>The assessment gives you a number in three minutes. But if you'd prefer to skip it and tell us what's going on in your own words, send a note. We read every one and reply ourselves.</p>
-        <p class="contact-direct">Or email us directly: <a class="js-email" href="#">hello (at) lockeoperations (dot) com</a></p>
       </div>
 
       <div class="contact-right">
@@ -1313,7 +1312,6 @@
           <h5>Contact</h5>
           <ul>
             <li><a href="#contact">Send a message</a></li>
-            <li><a class="js-email" href="#">hello (at) lockeoperations (dot) com</a></li>
           </ul>
         </div>
       </div>
@@ -1328,15 +1326,6 @@
   // Contact form → POST /api/contact. Same endpoint-base convention as the
   // assessment: override with window.LOCKE_API_ENDPOINT for local/staging.
   (function () {
-    // Assemble the address at runtime so the literal never appears in the
-    // page source for scrapers to harvest. Hydrate any <a class="js-email">
-    // into a real mailto with the address as its visible text.
-    var EMAIL = 'hello' + String.fromCharCode(64) + 'lockeoperations.com';
-    document.querySelectorAll('a.js-email').forEach(function (a) {
-      a.href = 'mailto:' + EMAIL;
-      a.textContent = EMAIL;
-    });
-
     var API_BASE = (window.LOCKE_API_ENDPOINT || 'https://api.lockeoperations.com');
     var form = document.getElementById('contactForm');
     if (!form) return;
@@ -1380,7 +1369,7 @@
         setStatus("Thanks. We'll be in touch shortly.", 'ok');
       } catch (err) {
         console.error('Contact submit failed:', err);
-        setStatus('Something went wrong. Please email ' + EMAIL + '.', 'error');
+        setStatus('Something went wrong. Please try again in a moment.', 'error');
       } finally {
         btn.disabled = false;
         btn.textContent = original;
