@@ -14,9 +14,13 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import time
 import uuid
+from collections import deque
 from html import escape as _h
 from typing import Any, Literal, Optional
+
+import httpx
 
 import asyncpg
 
@@ -152,6 +156,8 @@ class ContactRequest(BaseModel):
     # Honeypot: a hidden field real users never fill. Bots that auto-fill all
     # inputs trip it and we silently accept without doing anything.
     website: str | None = None
+    # Cloudflare Turnstile token from the widget; verified server-side.
+    turnstile_token: str | None = None
 
 # ---------------------------------------------------------------
 # Health
@@ -241,6 +247,69 @@ CONTACT_NOTIFY_EMAIL = os.environ.get(
     "CONTACT_NOTIFY_EMAIL", "hello@lockeoperations.com"
 ).strip().strip('"').strip("'")
 
+# Cloudflare Turnstile. Unset until configured → verification is skipped so the
+# form keeps working; once the secret is set, a missing/invalid token is a 403.
+TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "").strip().strip('"').strip("'")
+TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+# Per-IP rate limit for the public contact form. In-memory sliding window —
+# per process, so with multiple Railway replicas the effective limit is
+# (limit × replicas). That's fine as a flood/abuse cap; it is not a security
+# boundary. For a hard global limit, move this to Redis.
+CONTACT_RATELIMIT_MAX = int(os.environ.get("CONTACT_RATELIMIT_MAX", "5"))
+CONTACT_RATELIMIT_WINDOW_SEC = int(os.environ.get("CONTACT_RATELIMIT_WINDOW_SEC", "600"))
+_contact_hits: dict[str, deque] = {}
+
+
+def _client_ip(request: Request) -> str:
+    """Caller IP, honoring Railway's proxy. X-Forwarded-For is a comma list;
+    the first entry is the original client."""
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_limited(ip: str) -> bool:
+    """True if this IP has exceeded the contact window. Prunes as it goes."""
+    now = time.monotonic()
+    cutoff = now - CONTACT_RATELIMIT_WINDOW_SEC
+    hits = _contact_hits.setdefault(ip, deque())
+    while hits and hits[0] < cutoff:
+        hits.popleft()
+    if len(hits) >= CONTACT_RATELIMIT_MAX:
+        return True
+    hits.append(now)
+    # Opportunistic cleanup so the dict doesn't grow unbounded.
+    if len(_contact_hits) > 10000:
+        for k in [k for k, v in _contact_hits.items() if not v or v[-1] < cutoff]:
+            _contact_hits.pop(k, None)
+    return False
+
+
+async def _verify_turnstile(token: str | None, remote_ip: str | None) -> bool:
+    """Verify a Turnstile token with Cloudflare. Returns True (allow) when no
+    secret is configured yet so the form isn't blocked pre-setup."""
+    if not TURNSTILE_SECRET_KEY:
+        return True
+    if not token:
+        return False
+    data = {"secret": TURNSTILE_SECRET_KEY, "response": token}
+    if remote_ip:
+        data["remoteip"] = remote_ip
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(TURNSTILE_VERIFY_URL, data=data)
+        ok = bool(r.json().get("success"))
+        if not ok:
+            log.info("contact.turnstile_failed body=%s", r.text[:300])
+        return ok
+    except Exception as exc:
+        # Don't let a Cloudflare blip hard-block a legit visitor; the honeypot
+        # and rate limit still apply. Log and allow.
+        log.warning("contact.turnstile_error err=%s", exc)
+        return True
+
 
 async def _capture_contact_hubspot(contact: dict, message: str, page_uri: str | None) -> None:
     try:
@@ -258,6 +327,24 @@ async def contact(payload: ContactRequest, background: BackgroundTasks, request:
     if payload.website:
         log.info("contact.honeypot_triggered email=%s", payload.email)
         return {"ok": True, "message": "Thanks. We'll be in touch shortly."}
+
+    ip = _client_ip(request)
+
+    # Per-IP flood cap.
+    if _rate_limited(ip):
+        log.info("contact.rate_limited ip=%s email=%s", ip, payload.email)
+        raise HTTPException(
+            status_code=429,
+            detail="Too many messages from this connection. Please wait a few minutes and try again.",
+        )
+
+    # Bot challenge (no-op until TURNSTILE_SECRET_KEY is configured).
+    if not await _verify_turnstile(payload.turnstile_token, ip):
+        log.info("contact.turnstile_rejected ip=%s email=%s", ip, payload.email)
+        raise HTTPException(
+            status_code=403,
+            detail="Could not verify you're human. Please reload the page and try again.",
+        )
 
     submission_id = str(uuid.uuid4())
     name = f"{payload.first_name} {payload.last_name}".strip()

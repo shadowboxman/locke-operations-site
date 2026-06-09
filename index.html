@@ -1274,6 +1274,8 @@
           <div class="contact-hp" aria-hidden="true">
             <label>Website<input type="text" id="cWebsite" name="website" tabindex="-1" autocomplete="off"></label>
           </div>
+          <!-- Cloudflare Turnstile mounts here once a site key is configured. -->
+          <div id="cfTurnstile" style="margin-bottom:16px;"></div>
           <div class="contact-submit-row">
             <button class="btn-primary" type="submit" id="contactSubmit">Send message</button>
             <span class="contact-status" id="contactStatus" role="status" aria-live="polite"></span>
@@ -1322,11 +1324,31 @@
     </div>
   </footer>
 
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
   <script>
   // Contact form → POST /api/contact. Same endpoint-base convention as the
   // assessment: override with window.LOCKE_API_ENDPOINT for local/staging.
   (function () {
     var API_BASE = (window.LOCKE_API_ENDPOINT || 'https://api.lockeoperations.com');
+
+    // Cloudflare Turnstile. Paste the SITE key (public, safe to embed) below to
+    // turn on the bot challenge; leave empty and no widget renders. The matching
+    // SECRET key goes in Railway as TURNSTILE_SECRET_KEY (never in this file).
+    var TURNSTILE_SITE_KEY = '';
+    var turnstileWidgetId = null;
+    (function renderTurnstile() {
+      if (!TURNSTILE_SITE_KEY) return;                 // not configured → no widget
+      if (!window.turnstile) { setTimeout(renderTurnstile, 200); return; }
+      turnstileWidgetId = window.turnstile.render('#cfTurnstile', { sitekey: TURNSTILE_SITE_KEY });
+    })();
+    function turnstileToken() {
+      if (!TURNSTILE_SITE_KEY || !window.turnstile || turnstileWidgetId === null) return '';
+      return window.turnstile.getResponse(turnstileWidgetId) || '';
+    }
+    function turnstileReset() {
+      if (window.turnstile && turnstileWidgetId !== null) window.turnstile.reset(turnstileWidgetId);
+    }
+
     var form = document.getElementById('contactForm');
     if (!form) return;
     var statusEl = document.getElementById('contactStatus');
@@ -1346,6 +1368,7 @@
         email:      document.getElementById('cEmail').value.trim(),
         message:    document.getElementById('cMessage').value.trim(),
         website:    document.getElementById('cWebsite').value,
+        turnstile_token: turnstileToken(),
         page_uri:   window.location.href
       };
       if (!payload.first_name || !payload.last_name || !payload.company || !payload.email || !payload.message) {
@@ -1364,12 +1387,22 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (!res.ok) throw new Error('status ' + res.status);
+        if (!res.ok) {
+          var detail = '';
+          try { detail = (await res.json()).detail || ''; } catch (e) {}
+          throw new Error(detail || ('status ' + res.status));
+        }
         form.reset();
+        turnstileReset();
         setStatus("Thanks. We'll be in touch shortly.", 'ok');
       } catch (err) {
         console.error('Contact submit failed:', err);
-        setStatus('Something went wrong. Please try again in a moment.', 'error');
+        turnstileReset();
+        // Surface the server's friendly message (rate limit / verification);
+        // fall back to a generic line for network/parse errors.
+        var msg = (err && err.message && err.message.indexOf('status ') !== 0)
+          ? err.message : 'Something went wrong. Please try again in a moment.';
+        setStatus(msg, 'error');
       } finally {
         btn.disabled = false;
         btn.textContent = original;
