@@ -1008,6 +1008,29 @@
             </div>
           </div>
 
+          <!-- E-signature (admin-only; hidden unless a provider is configured) -->
+          <div class="doc-group" id="signaturePanel" style="display:none;">
+            <div class="doc-group-header">
+              <span>Signature requests</span>
+              <button class="btn-primary" type="button" id="sendSigBtn" onclick="toggleSendSig()" style="padding:8px 14px;font-size:11px;">Send for signature</button>
+            </div>
+            <div id="sendSigForm" style="display:none;border:1px solid var(--hairline-strong);background:var(--bone);padding:14px;margin-bottom:14px;">
+              <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+                <div class="form-field" style="flex:1 1 200px;">
+                  <label class="form-label" for="sigName">Signer name</label>
+                  <input class="form-input" type="text" id="sigName" placeholder="Jane Client">
+                </div>
+                <div class="form-field" style="flex:1 1 220px;">
+                  <label class="form-label" for="sigEmail">Signer email</label>
+                  <input class="form-input" type="email" id="sigEmail" placeholder="jane@client.com">
+                </div>
+                <button class="btn-primary" type="button" onclick="sendSignature()">Send NDA</button>
+              </div>
+              <div id="sendSigStatus" class="form-help" style="margin-top:10px;min-height:1px;"></div>
+            </div>
+            <div id="signatureList"></div>
+          </div>
+
           <div class="doc-group">
             <div class="doc-group-header">
               <span>General</span>
@@ -1451,6 +1474,7 @@
 
     lockeUser = me.user;
     lockePrimary = me.primary;
+    esignEnabled = me.esign_enabled === true;
 
     // Notification preference toggle (per-user; default on).
     const nrEl = document.getElementById('notifyRequests');
@@ -1560,6 +1584,7 @@
   let lockeAdminMode = false;
   let adminOrgs = [];
   let adminSelectedOrgId = null;
+  let esignEnabled = false;  // set from /api/me; gates the signature UI
 
   async function initAdminPortal() {
     lockeAdminMode = true;
@@ -1679,6 +1704,108 @@
     // In admin mode, the Overview "recent activity" shows org-scoped documents;
     // for clients it's driven by their requests (see loadRequests/renderRecent).
     if (lockeAdminMode) renderRecentDocs(data);
+    if (lockeAdminMode) renderSignatures();
+  }
+
+  // === E-signature (admin-only) ===
+  const SIG_STATUS_LABEL = {
+    draft: 'Draft', sent: 'Sent', viewed: 'Viewed', signed: 'Signed',
+    completed: 'Completed', declined: 'Declined', canceled: 'Canceled', error: 'Error',
+  };
+
+  function toggleSendSig() {
+    const f = document.getElementById('sendSigForm');
+    if (f) f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
+  }
+
+  async function renderSignatures() {
+    const panel = document.getElementById('signaturePanel');
+    const list = document.getElementById('signatureList');
+    if (!panel || !list) return;
+    // Show only for Locke admins with a configured provider and a selected org.
+    if (!lockeAdminMode || !esignEnabled || !adminSelectedOrgId) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = '';
+    let data;
+    try {
+      data = await adminApi('GET', `/api/admin/orgs/${adminSelectedOrgId}/signatures`);
+    } catch (err) {
+      console.error('Failed to load signatures:', err);
+      list.innerHTML = `<div class="empty"><div class="empty-sub">Could not load signature requests.</div></div>`;
+      return;
+    }
+    const sigs = data.signatures || [];
+    if (!sigs.length) {
+      list.innerHTML = `<div class="empty"><div class="empty-sub">No signature requests yet.</div></div>`;
+      return;
+    }
+    list.innerHTML = sigs.map(sigRow).join('');
+  }
+
+  function sigRow(s) {
+    const emails = (s.signers || []).map(x => x.email).filter(Boolean).join(', ');
+    const open = !['completed', 'canceled', 'declined'].includes(s.status);
+    const actions = open
+      ? `<a href="#" class="note-edit" onclick="return remindSignature(event,'${s.id}')">Remind</a>
+         <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return cancelSignature(event,'${s.id}')">Cancel</a>`
+      : (s.document_id ? `<span class="doc-meta">Filed in Contracts</span>` : '');
+    return `
+      <div class="mgmt-row" style="display:grid;grid-template-columns:1fr 130px 200px;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--hairline);">
+        <div style="min-width:0;">
+          <div style="color:var(--navy);font-weight:500;">${escapeHtml((s.doc_type || '').toUpperCase())}</div>
+          <div style="color:var(--concrete);font-size:12px;margin-top:2px;">${escapeHtml(emails)}</div>
+        </div>
+        <div class="doc-meta" style="letter-spacing:0.06em;">${escapeHtml(SIG_STATUS_LABEL[s.status] || s.status || '')}</div>
+        <div style="text-align:right;white-space:nowrap;">${actions}</div>
+      </div>`;
+  }
+
+  async function sendSignature() {
+    const name = (document.getElementById('sigName').value || '').trim();
+    const email = (document.getElementById('sigEmail').value || '').trim();
+    const status = document.getElementById('sendSigStatus');
+    if (!name || !email) { status.textContent = 'Enter the signer name and email.'; return; }
+    status.textContent = 'Sending...';
+    try {
+      await adminApi('POST', `/api/admin/orgs/${adminSelectedOrgId}/signatures`, {
+        doc_type: 'nda',
+        signers: [{ email, name, role: 'signer' }],
+      });
+      document.getElementById('sigName').value = '';
+      document.getElementById('sigEmail').value = '';
+      toggleSendSig();
+      await renderSignatures();
+    } catch (err) {
+      console.error('Send signature failed:', err);
+      status.textContent = 'Could not send. ' + cleanErr(err);
+    }
+  }
+
+  async function cancelSignature(event, id) {
+    event.preventDefault();
+    if (!(await uiConfirm('Cancel this signature request?', { title: 'Cancel request', confirmLabel: 'Cancel request' }))) return false;
+    try {
+      await adminApi('POST', `/api/admin/signatures/${id}/cancel`, {});
+      await renderSignatures();
+    } catch (err) {
+      console.error('Cancel signature failed:', err);
+      await uiAlert('Could not cancel. ' + cleanErr(err));
+    }
+    return false;
+  }
+
+  async function remindSignature(event, id) {
+    event.preventDefault();
+    try {
+      await adminApi('POST', `/api/admin/signatures/${id}/remind`, {});
+      await uiAlert('Reminder sent.');
+    } catch (err) {
+      console.error('Remind signature failed:', err);
+      await uiAlert('Could not send a reminder. ' + cleanErr(err));
+    }
+    return false;
   }
 
   // Overview recent-activity list, admin mode: the selected org's newest files.

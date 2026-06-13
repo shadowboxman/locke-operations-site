@@ -11,6 +11,7 @@ manual playbook 06 workflow remains a working fallback.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -45,6 +46,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 import hubspot_client
 import r2
+from esign import EnvelopeStatus, Signer, get_provider
 from clerk import (
     create_clerk_invitation,
     create_clerk_organization,
@@ -461,6 +463,9 @@ async def me(user: dict = Depends(get_current_user)):
         },
         "primary": _serialize_membership(primary) if primary else None,
         "memberships": [_serialize_membership(r) for r in rows],
+        # Admin UI gates the e-signature controls on this; True only when a
+        # provider is configured.
+        "esign_enabled": get_provider() is not None,
     }
 
 
@@ -2576,4 +2581,259 @@ async def clerk_webhook(request: Request):
         # Real failures should surface via Sentry once it's wired in Phase 4.
         log.exception("clerk.webhook.handler_failed type=%s err=%s",
                       event.get("type"), exc)
+    return {"ok": True}
+
+
+# ===============================================================
+# E-signature (provider-agnostic; SignWell is the v1 provider)
+#
+# Admins start an NDA request for an org; the provider emails the signer(s).
+# A webhook updates status and, on completion, files the executed PDF into the
+# org's Contracts as a client-visible contract. All provider specifics live in
+# the esign/ package; this layer only speaks canonical types. Unconfigured ->
+# endpoints return 501 and the UI hides the feature.
+# ===============================================================
+class SignatureSigner(BaseModel):
+    email: EmailStr
+    name: str = Field(min_length=1, max_length=160)
+    role: str = Field(default="signer", max_length=80)  # template placeholder/role
+
+
+class SignatureCreateRequest(BaseModel):
+    doc_type: Literal["nda", "msa", "sow"] = "nda"
+    signers: list[SignatureSigner] = Field(min_length=1, max_length=10)
+    subject: Optional[str] = Field(default=None, max_length=255)
+    message: Optional[str] = Field(default=None, max_length=5000)
+
+
+def _serialize_signature(row: dict) -> dict:
+    signers = row.get("signers")
+    if isinstance(signers, str):
+        try:
+            signers = json.loads(signers)
+        except Exception:
+            signers = []
+    return {
+        "id": str(row["id"]),
+        "org_id": str(row["org_id"]),
+        "provider": row["provider"],
+        "doc_type": row["doc_type"],
+        "status": row["status"],
+        "signers": signers or [],
+        "document_id": str(row["document_id"]) if row.get("document_id") else None,
+        "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+        "sent_at": row["sent_at"].isoformat() if row.get("sent_at") else None,
+        "completed_at": row["completed_at"].isoformat() if row.get("completed_at") else None,
+    }
+
+
+def _require_esign_provider():
+    provider = get_provider()
+    if provider is None:
+        raise HTTPException(status_code=501, detail="E-signature is not configured.")
+    return provider
+
+
+@app.post("/api/admin/orgs/{org_id}/signatures")
+async def create_signature(
+    org_id: str,
+    payload: SignatureCreateRequest,
+    admin: dict = Depends(require_locke_admin),
+):
+    """Start a signature request (NDA in v1) for an org and email the signer(s)."""
+    provider = _require_esign_provider()
+    async with admin_conn() as conn:
+        org = await _load_active_org(conn, org_id)
+
+    signers = [Signer(email=s.email, name=s.name, role=s.role) for s in payload.signers]
+    try:
+        env = await provider.create_request(
+            doc_type=payload.doc_type,
+            signers=signers,
+            subject=payload.subject,
+            message=payload.message,
+            metadata={"org_id": str(org["id"]), "doc_type": payload.doc_type},
+        )
+    except Exception as exc:
+        log.exception("signature.create_failed org=%s err=%s", org_id, exc)
+        raise HTTPException(status_code=502, detail="Could not start the signature request.")
+
+    signer_json = json.dumps([
+        {"email": s.email, "name": s.name, "role": s.role, "status": "sent"}
+        for s in payload.signers
+    ])
+    sent_at_sql = "now()" if env.status != EnvelopeStatus.DRAFT else "NULL"
+    async with admin_conn() as conn:
+        row = await conn.fetchrow(
+            f"""
+            INSERT INTO signature_requests
+              (org_id, provider, external_id, doc_type, status, signers, created_by, sent_at)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, {sent_at_sql})
+            RETURNING *
+            """,
+            org["id"], provider.name, env.external_id, payload.doc_type,
+            env.status.value, signer_json, admin["id"],
+        )
+
+    await _audit(
+        actor_user_id=admin["id"], action="signature.sent",
+        resource_type="signature_request", resource_id=row["id"], org_id=org["id"],
+        metadata={"doc_type": payload.doc_type, "provider": provider.name,
+                  "signers": [s.email for s in payload.signers]},
+    )
+    return _serialize_signature(dict(row))
+
+
+@app.get("/api/admin/orgs/{org_id}/signatures")
+async def list_signatures(org_id: str, admin: dict = Depends(require_locke_admin)):
+    async with admin_conn() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM signature_requests WHERE org_id = $1 ORDER BY created_at DESC",
+            uuid.UUID(org_id),
+        )
+    return {"signatures": [_serialize_signature(dict(r)) for r in rows]}
+
+
+@app.get("/api/admin/signatures/{signature_id}")
+async def get_signature(signature_id: str, admin: dict = Depends(require_locke_admin)):
+    async with admin_conn() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM signature_requests WHERE id = $1", uuid.UUID(signature_id)
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Signature request not found")
+    return _serialize_signature(dict(row))
+
+
+@app.post("/api/admin/signatures/{signature_id}/cancel")
+async def cancel_signature(signature_id: str, admin: dict = Depends(require_locke_admin)):
+    provider = _require_esign_provider()
+    async with admin_conn() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM signature_requests WHERE id = $1", uuid.UUID(signature_id)
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Signature request not found")
+        if row["status"] in ("completed", "canceled"):
+            raise HTTPException(status_code=409, detail=f"Request is already {row['status']}.")
+        try:
+            if row["external_id"]:
+                await provider.cancel(row["external_id"])
+        except NotImplementedError:
+            raise HTTPException(status_code=400, detail="This provider does not support canceling.")
+        except Exception as exc:
+            log.exception("signature.cancel_failed id=%s err=%s", signature_id, exc)
+            raise HTTPException(status_code=502, detail="Could not cancel at the provider.")
+        await conn.execute(
+            "UPDATE signature_requests SET status = 'canceled', updated_at = now() WHERE id = $1",
+            row["id"],
+        )
+    await _audit(
+        actor_user_id=admin["id"], action="signature.canceled",
+        resource_type="signature_request", resource_id=row["id"], org_id=row["org_id"],
+        metadata={"doc_type": row["doc_type"]},
+    )
+    return {"ok": True}
+
+
+@app.post("/api/admin/signatures/{signature_id}/remind")
+async def remind_signature(signature_id: str, admin: dict = Depends(require_locke_admin)):
+    provider = _require_esign_provider()
+    async with admin_conn() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM signature_requests WHERE id = $1", uuid.UUID(signature_id)
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Signature request not found")
+    try:
+        if row["external_id"]:
+            await provider.send_reminder(row["external_id"])
+    except NotImplementedError:
+        raise HTTPException(status_code=400, detail="This provider does not support reminders.")
+    except Exception as exc:
+        log.exception("signature.remind_failed id=%s err=%s", signature_id, exc)
+        raise HTTPException(status_code=502, detail="Could not send a reminder.")
+    return {"ok": True}
+
+
+@app.post("/webhooks/esign")
+async def esign_webhook(request: Request):
+    """Provider signature webhook. Verifies authenticity, updates status, and on
+    completion files the executed PDF into the org's Contracts. Idempotent: the
+    PDF is filed at most once (guarded on document_id). Returns 200 on handler
+    errors so the provider doesn't retry forever (failures are logged)."""
+    provider = get_provider()
+    if provider is None:
+        raise HTTPException(status_code=503, detail="E-signature not configured")
+
+    raw = await request.body()
+    if not provider.verify_webhook(dict(request.headers), raw):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+
+    event = provider.parse_event(payload)
+    if not event or not event.external_id:
+        return {"ok": True}  # event type we don't track
+
+    try:
+        async with admin_conn() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM signature_requests WHERE provider = $1 AND external_id = $2",
+                provider.name, event.external_id,
+            )
+            if not row:
+                log.info("esign.webhook.unknown_envelope external_id=%s", event.external_id)
+                return {"ok": True}
+
+            await conn.execute(
+                """
+                UPDATE signature_requests
+                   SET status = $1,
+                       completed_at = CASE WHEN $1 = 'completed' THEN now() ELSE completed_at END,
+                       updated_at = now()
+                 WHERE id = $2
+                """,
+                event.status.value, row["id"],
+            )
+
+            # File the executed PDF exactly once.
+            if event.status == EnvelopeStatus.COMPLETED and not row["document_id"]:
+                try:
+                    pdf = await provider.fetch_executed_pdf(event.external_id)
+                except Exception as exc:
+                    log.exception("esign.webhook.fetch_pdf_failed id=%s err=%s", row["id"], exc)
+                    return {"ok": True}
+
+                doc_uuid = uuid.uuid4()
+                storage_key = r2.build_storage_key(row["org_id"], doc_uuid, 1)
+                r2.put_bytes(storage_key, pdf, "application/pdf")
+                name = f"{row['doc_type'].upper()} (executed).pdf"
+                drow = await conn.fetchrow(
+                    """
+                    INSERT INTO documents
+                      (id, org_id, category, name, storage_key, version,
+                       size_bytes, content_type, uploaded_by, visibility, source)
+                    VALUES ($1, $2, 'contract', $3, $4, 1, $5, 'application/pdf', $6, 'client', 'locke')
+                    RETURNING id
+                    """,
+                    doc_uuid, row["org_id"], name, storage_key, len(pdf), row["created_by"],
+                )
+                await conn.execute(
+                    "UPDATE signature_requests SET document_id = $1, updated_at = now() WHERE id = $2",
+                    drow["id"], row["id"],
+                )
+                await _audit(
+                    actor_user_id=row["created_by"], action="signature.completed",
+                    resource_type="document", resource_id=drow["id"], org_id=row["org_id"],
+                    metadata={"doc_type": row["doc_type"], "provider": provider.name},
+                )
+                log.info("esign.webhook.filed signature=%s document=%s org=%s",
+                         row["id"], drow["id"], row["org_id"])
+    except Exception as exc:
+        log.exception("esign.webhook.handler_failed external_id=%s err=%s", event.external_id, exc)
+
     return {"ok": True}

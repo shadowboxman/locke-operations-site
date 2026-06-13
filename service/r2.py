@@ -118,6 +118,21 @@ def presign_get(
     return url
 
 
+def put_bytes(storage_key: str, data: bytes, content_type: Optional[str] = None) -> None:
+    """Server-side upload of in-memory bytes to R2.
+
+    Unlike the presigned-PUT path (browser uploads directly), this is for bytes
+    the backend already holds, e.g. an executed PDF pulled from an e-signature
+    provider in a webhook handler. Stores under the same key convention so the
+    object behaves like any other document.
+    """
+    params = {"Bucket": bucket(), "Key": storage_key, "Body": data}
+    if content_type:
+        params["ContentType"] = content_type
+    _client().put_object(**params)
+    log.info("r2.put_bytes key=%s bytes=%d", storage_key, len(data))
+
+
 def delete(storage_key: str) -> None:
     """Hard-delete an object from R2. Soft-delete (documents.deleted_at) is the
     normal path; this exists for retention/purge jobs, not request handlers.
