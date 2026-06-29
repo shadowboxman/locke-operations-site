@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Locke Operations · About</title>
+<meta name="description" content="One operator with a background in operations, management consulting, and technology. Locke fixes the workflow first, then automates it, then keeps it running.">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Locke Operations · About">
+<meta property="og:description" content="One operator. Not a sales team. Locke fixes the workflow first, then automates it, then keeps it running.">
+<meta property="og:url" content="https://lockeoperations.com/about">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #1A2332;
+    --bone: #F4F1EA;
+    --concrete: #A8A6A0;
+    --oxide: #F25A1A;
+    --hairline: rgba(26, 35, 50, 0.10);
+    --hairline-strong: rgba(26, 35, 50, 0.22);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bone);
+    color: var(--navy);
+    font-family: "IBM Plex Sans", -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .container {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 40px;
+  }
+  /* NAV */
+  .nav {
+    border-bottom: 1px solid var(--hairline);
+    padding: 22px 0;
+  }
+  .nav-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .wordmark {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 18px;
+    letter-spacing: 0.06em;
+    color: var(--navy);
+    text-decoration: none;
+  }
+  .wordmark .dot { color: var(--oxide); }
+  .nav-links {
+    display: flex;
+    gap: 36px;
+    align-items: center;
+  }
+  .nav-links a {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--navy);
+    text-decoration: none;
+    padding: 6px 0;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s ease;
+  }
+  .nav-links a:hover { border-bottom-color: var(--navy); }
+  .nav-links a.active { border-bottom-color: var(--oxide); }
+  .nav-cta {
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--bone);
+    background: var(--navy);
+    padding: 10px 16px;
+    text-decoration: none;
+    transition: background 0.15s ease;
+  }
+  .nav-cta:hover { background: var(--oxide); }
+  .nav-right {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+  .nav-secondary {
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--navy);
+    text-decoration: none;
+    padding: 10px 0;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s ease;
+  }
+  .nav-secondary:hover { border-bottom-color: var(--navy); }
+
+  /* PAGE HEAD */
+  .pagehead {
+    padding: 110px 0 70px;
+    border-bottom: 1px solid var(--hairline);
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .pagehead-eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+    margin-bottom: 24px;
+  }
+  .pagehead-eyebrow .mark { color: var(--oxide); margin-right: 8px; }
+  .pagehead h1 {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 56px;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    max-width: 820px;
+    color: var(--navy);
+  }
+
+  /* OPERATOR SECTION */
+  .operator {
+    padding: 80px 0 100px;
+  }
+  .founder-grid {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 56px;
+    align-items: start;
+  }
+  .founder-photo {
+    width: 280px;
+    height: 340px;
+    background: var(--navy);
+    border: 1px solid var(--navy);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+  }
+  .founder-photo .initials {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 76px;
+    line-height: 1;
+    color: var(--bone);
+    letter-spacing: 0.02em;
+  }
+  .founder-photo .ph-note {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+  }
+  .founder-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--oxide);
+    margin-bottom: 14px;
+  }
+  .founder-body p {
+    font-size: 17px;
+    line-height: 1.6;
+    margin-bottom: 20px;
+    max-width: 640px;
+    color: var(--navy);
+  }
+  .founder-body p:first-of-type {
+    font-size: 20px;
+    font-weight: 500;
+    line-height: 1.45;
+  }
+  .founder-body p:last-child { margin-bottom: 0; }
+
+  /* FOOTER */
+  footer {
+    padding: 60px 0 40px;
+    border-top: 1px solid var(--navy);
+    background: var(--bone);
+  }
+  .footer-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 40px;
+    margin-bottom: 40px;
+  }
+  .footer-brand .wordmark {
+    font-size: 20px;
+    margin-bottom: 12px;
+    display: inline-block;
+  }
+  .footer-brand p {
+    font-size: 13px;
+    color: var(--navy);
+    line-height: 1.55;
+    max-width: 320px;
+  }
+  .footer-col h5 {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--concrete);
+    margin-bottom: 14px;
+  }
+  .footer-col ul { list-style: none; }
+  .footer-col li { font-size: 13px; margin-bottom: 8px; }
+  .footer-col a { color: var(--navy); text-decoration: none; }
+  .footer-col a:hover { color: var(--oxide); }
+  .footer-bottom {
+    border-top: 1px solid var(--hairline);
+    padding-top: 20px;
+    display: flex;
+    justify-content: space-between;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--concrete);
+  }
+
+  /* BACKGROUND NUMERAL */
+  .pagehead-numeral {
+    position: absolute;
+    top: 28px;
+    right: -30px;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 300;
+    font-size: 240px;
+    line-height: 0.85;
+    letter-spacing: -0.04em;
+    color: var(--hairline);
+    pointer-events: none;
+    user-select: none;
+    z-index: -1;
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 900px) {
+    .container { padding: 0 24px; }
+    .pagehead { padding: 72px 0 48px; }
+    .pagehead h1 { font-size: 38px; }
+    .operator { padding: 56px 0 72px; }
+    .founder-grid { grid-template-columns: 1fr; gap: 28px; }
+    .founder-photo { width: 100%; max-width: 320px; height: 320px; }
+    .footer-row { grid-template-columns: 1fr 1fr; }
+    .nav-links { display: none; }
+    .pagehead-numeral { font-size: 150px; top: 22px; right: -16px; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <div class="container nav-row">
+      <a class="wordmark" href="index.html">LOCKE <span class="dot">O</span>PERATIONS</a>
+      <div class="nav-links">
+        <a href="index.html#work">The work</a>
+        <a href="index.html#products">Products</a>
+        <a href="index.html#how">How it runs</a>
+        <a href="about.html" class="active">About</a>
+        <a href="index.html#contact">Contact</a>
+      </div>
+      <div class="nav-right">
+        <a class="nav-secondary" href="login.html">Client login</a>
+        <a class="nav-cta" href="assessment.html">Take the assessment</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- PAGE HEAD -->
+  <header class="pagehead">
+    <div class="pagehead-numeral">·</div>
+    <div class="container">
+      <div class="pagehead-eyebrow"><span class="mark">●</span>About</div>
+      <h1>One operator. Not a sales team.</h1>
+    </div>
+  </header>
+
+  <!-- OPERATOR -->
+  <section class="operator">
+    <div class="container">
+      <div class="founder-grid">
+        <div class="founder-photo" aria-label="Founder photo placeholder">
+          <div class="initials">DL</div>
+          <div class="ph-note">Photo placeholder</div>
+        </div>
+        <div class="founder-body">
+          <div class="founder-label">Who's behind it</div>
+          <p>Dan Lee runs Locke. Twenty years across three fields that rarely sit in one person: operations, management consulting, and technology.</p>
+          <p>He has shipped software that ran on more than 60 million devices and led engineering teams of fifty. He built and automated the back-office paperwork inside a regulated, HIPAA-bound industry, cutting the manual handling and the errors that came with it. He has worked across the table from owners and C-suite leaders at Fortune 500 and private-equity-backed firms, finding where the hours and the margin leak. He holds a US patent.</p>
+          <p>The back-office work that eats your team, forms, approvals, numbers retyped between systems, is exactly the kind of work he has spent his career taking apart.</p>
+          <p>That combination is the point. Most automation just makes your current workflow run faster, including the parts that are broken. Locke looks at the workflow first. Often the bigger win is fixing the process, then automating it. Usually it is both.</p>
+          <p>He spent years building this kind of automation for big companies. What is new is that it now costs little enough for a business your size to have the same thing.</p>
+          <p>You work with Dan directly, not an account manager who hands you to a junior. When a job needs more hands, he brings in vetted specialists he has worked with before. The work lives in playbooks, not in one person's head.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="container">
+      <div class="footer-row">
+        <div class="footer-brand">
+          <span class="wordmark">LOCKE <span class="dot">O</span>PERATIONS</span>
+          <p>We handle the work your software won't. Audit, build, run.</p>
+        </div>
+        <div class="footer-col">
+          <h5>Work</h5>
+          <ul>
+            <li><a href="index.html#work">The work</a></li>
+            <li><a href="index.html#who">Who it's for</a></li>
+            <li><a href="index.html#products">Products</a></li>
+            <li><a href="about.html">About</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h5>Start</h5>
+          <ul>
+            <li><a href="assessment.html">Take the assessment</a></li>
+            <li><a href="index.html#contact">Contact us</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h5>Contact</h5>
+          <ul>
+            <li><a href="index.html#contact">Send a message</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <div>© 2026 Locke Operations</div>
+        <div>v0.1</div>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
