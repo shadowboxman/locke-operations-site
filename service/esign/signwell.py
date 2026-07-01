@@ -182,7 +182,13 @@ class SignWellProvider(ESignatureProvider):
         expected = hmac.new(self.api_key.encode(), signed_value.encode(), hashlib.sha256).hexdigest()
         ok = hmac.compare_digest(expected, supplied)
         if not ok:
-            log.warning("signwell.webhook.bad_signature")
+            # TEMP DIAGNOSTIC (remove after V3 is confirmed): dump what we hashed
+            # vs what SignWell sent so we can see the exact scheme/value/key issue.
+            log.warning(
+                "signwell.webhook.bad_signature keylen=%d time=%r supplied=%s expected=%s body=%s",
+                len(self.api_key), signed_value, supplied, expected,
+                raw_body[:700].decode("utf-8", "replace"),
+            )
         return ok
 
     def parse_event(self, payload: dict[str, Any]) -> Optional[ESignEvent]:
