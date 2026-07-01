@@ -94,6 +94,12 @@ class ESignatureProvider(ABC):
         """Embedded signing URL for a signer, if the provider/flow supports it."""
         return None
 
+    async def fetch_status(self, external_id: str) -> Optional[EnvelopeStatus]:
+        """Authoritatively fetch the envelope's current status from the provider
+        using our own credentials. Used to verify webhooks without trusting the
+        payload signature. Returns None if unsupported or the envelope is gone."""
+        return None
+
     async def cancel(self, external_id: str) -> None:
         raise NotImplementedError(f"{self.name} does not support cancel")
 

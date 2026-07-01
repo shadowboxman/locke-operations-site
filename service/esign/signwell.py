@@ -182,14 +182,22 @@ class SignWellProvider(ESignatureProvider):
         expected = hmac.new(self.api_key.encode(), signed_value.encode(), hashlib.sha256).hexdigest()
         ok = hmac.compare_digest(expected, supplied)
         if not ok:
-            # TEMP DIAGNOSTIC (remove after V3 is confirmed): dump what we hashed
-            # vs what SignWell sent so we can see the exact scheme/value/key issue.
-            log.warning(
-                "signwell.webhook.bad_signature keylen=%d time=%r supplied=%s expected=%s body=%s",
-                len(self.api_key), signed_value, supplied, expected,
-                raw_body[:700].decode("utf-8", "replace"),
-            )
+            log.warning("signwell.webhook.bad_signature")
         return ok
+
+    async def fetch_status(self, external_id: str) -> Optional[EnvelopeStatus]:
+        # Authoritative status straight from SignWell, authenticated with our key.
+        # This is how the webhook proves authenticity (the in-payload HMAC hash is
+        # provider-signed in an undocumented way; a direct authenticated read is
+        # both simpler and stronger).
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(f"{API_BASE}/documents/{external_id}/", headers=self._headers())
+        if r.status_code == 404:
+            return None
+        if r.status_code >= 300:
+            log.error("signwell.fetch_status failed status=%s body=%s", r.status_code, r.text[:300])
+            r.raise_for_status()
+        return _STATUS_MAP.get(str(r.json().get("status", "")).lower())
 
     def parse_event(self, payload: dict[str, Any]) -> Optional[ESignEvent]:
         event = payload.get("event", {}) or {}

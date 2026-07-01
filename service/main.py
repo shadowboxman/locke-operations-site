@@ -2771,9 +2771,6 @@ async def esign_webhook(request: Request):
         raise HTTPException(status_code=503, detail="E-signature not configured")
 
     raw = await request.body()
-    if not provider.verify_webhook(dict(request.headers), raw):
-        raise HTTPException(status_code=401, detail="Invalid webhook signature")
-
     try:
         payload = json.loads(raw.decode("utf-8"))
     except Exception:
@@ -2793,6 +2790,13 @@ async def esign_webhook(request: Request):
                 log.info("esign.webhook.unknown_envelope external_id=%s", event.external_id)
                 return {"ok": True}
 
+            # Authenticity: don't trust the payload's status or its signature.
+            # Read the real status straight from the provider with our own key.
+            status = await provider.fetch_status(event.external_id)
+            if status is None:
+                log.info("esign.webhook.status_unavailable external_id=%s", event.external_id)
+                return {"ok": True}
+
             await conn.execute(
                 """
                 UPDATE signature_requests
@@ -2801,11 +2805,11 @@ async def esign_webhook(request: Request):
                        updated_at = now()
                  WHERE id = $2
                 """,
-                event.status.value, row["id"],
+                status.value, row["id"],
             )
 
             # File the executed PDF exactly once.
-            if event.status == EnvelopeStatus.COMPLETED and not row["document_id"]:
+            if status == EnvelopeStatus.COMPLETED and not row["document_id"]:
                 try:
                     pdf = await provider.fetch_executed_pdf(event.external_id)
                 except Exception as exc:
