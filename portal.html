@@ -1803,7 +1803,9 @@
     const actions = open
       ? `<a href="#" class="note-edit" onclick="return remindSignature(event,'${s.id}')">Remind</a>
          <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return cancelSignature(event,'${s.id}')">Cancel</a>`
-      : (s.document_id ? `<span class="doc-meta">Filed in Contracts</span>` : '');
+      : (s.document_id
+          ? `<a href="#" class="note-edit" data-doc-id="${s.document_id}" onclick="return downloadDocument(event, this)">Download</a>`
+          : '');
     return `
       <div class="mgmt-row" style="display:grid;grid-template-columns:minmax(0,1fr) 100px 150px;gap:12px;align-items:center;padding:11px 20px;border-top:1px solid var(--hairline);">
         <div style="min-width:0;">
