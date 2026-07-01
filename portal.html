@@ -1831,6 +1831,7 @@
       effective_date:           (document.getElementById('sigEffDate').value || '').trim(),
       locke_signer_name:        (document.getElementById('sigLockeName').value || '').trim(),
       locke_signer_title:       (document.getElementById('sigLockeTitle').value || '').trim(),
+      locke_signer_date:        (document.getElementById('sigEffDate').value || '').trim(),
     };
     const fields = {};
     Object.keys(fieldMap).forEach(k => { if (fieldMap[k]) fields[k] = fieldMap[k]; });
