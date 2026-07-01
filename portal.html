@@ -1768,6 +1768,12 @@
       return;
     }
     const sigs = data.signatures || [];
+    // Hide "Send for signature" while a request is still open, to avoid duplicate
+    // NDAs. It returns once the open one is completed, canceled, or declined.
+    const sendBtn = document.getElementById('sendSigBtn');
+    const hasOpen = sigs.some(s => !['completed', 'canceled', 'declined'].includes(s.status));
+    if (sendBtn) sendBtn.style.display = hasOpen ? 'none' : '';
+    if (hasOpen) { const f = document.getElementById('sendSigForm'); if (f) f.style.display = 'none'; }
     if (!sigs.length) {
       list.innerHTML = `<div class="empty"><div class="empty-sub">No signature requests yet.</div></div>`;
       return;
@@ -1783,7 +1789,7 @@
          <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return cancelSignature(event,'${s.id}')">Cancel</a>`
       : (s.document_id ? `<span class="doc-meta">Filed in Contracts</span>` : '');
     return `
-      <div class="mgmt-row" style="display:grid;grid-template-columns:minmax(0,1fr) 100px 150px;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--hairline);">
+      <div class="mgmt-row" style="display:grid;grid-template-columns:minmax(0,1fr) 100px 150px;gap:12px;align-items:center;padding:11px 20px;border-top:1px solid var(--hairline);">
         <div style="min-width:0;">
           <div style="color:var(--navy);font-weight:500;">${escapeHtml((s.doc_type || '').toUpperCase())}</div>
           <div style="color:var(--concrete);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(emails)}</div>

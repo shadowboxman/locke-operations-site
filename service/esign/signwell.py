@@ -194,3 +194,24 @@ class SignWellProvider(ESignatureProvider):
         obj = (payload.get("data", {}) or {}).get("object", {}) or {}
         external_id = obj.get("id") or obj.get("document_id") or ""
         return ESignEvent(status=status, external_id=external_id, raw=payload)
+
+    async def send_reminder(self, external_id: str) -> None:
+        # SignWell emails a reminder to recipients who haven't signed yet.
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(
+                f"{API_BASE}/documents/{external_id}/remind", headers=self._headers()
+            )
+        if r.status_code >= 300:
+            log.error("signwell.remind failed status=%s body=%s", r.status_code, r.text[:300])
+            r.raise_for_status()
+
+    async def cancel(self, external_id: str) -> None:
+        # SignWell has no "cancel"; deleting the document revokes recipient access.
+        # Treat 404 as already-gone (idempotent).
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.delete(
+                f"{API_BASE}/documents/{external_id}/", headers=self._headers()
+            )
+        if r.status_code >= 300 and r.status_code != 404:
+            log.error("signwell.cancel failed status=%s body=%s", r.status_code, r.text[:300])
+            r.raise_for_status()
