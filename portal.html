@@ -1047,6 +1047,17 @@
                   <label class="form-label" for="sigEffDate">Effective date</label>
                   <input class="form-input" type="date" id="sigEffDate">
                 </div>
+              </div>
+              <div style="margin-top:14px;margin-bottom:6px;color:var(--concrete);text-transform:uppercase;letter-spacing:0.1em;font-size:10px;">Signed for Locke by</div>
+              <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+                <div class="form-field" style="flex:1 1 240px;">
+                  <label class="form-label" for="sigLockeName">Locke signer name</label>
+                  <input class="form-input" type="text" id="sigLockeName" placeholder="Your name">
+                </div>
+                <div class="form-field" style="flex:1 1 200px;">
+                  <label class="form-label" for="sigLockeTitle">Locke signer title</label>
+                  <input class="form-input" type="text" id="sigLockeTitle" placeholder="e.g., Member">
+                </div>
                 <button class="btn-primary" type="button" onclick="sendSignature()">Send NDA</button>
               </div>
               <div id="sendSigStatus" class="form-help" style="margin-top:10px;min-height:1px;"></div>
@@ -1746,6 +1757,11 @@
       // until the org record carries entity type / state / address.
       const d = document.getElementById('sigEffDate');
       if (d && !d.value) d.value = new Date().toISOString().slice(0, 10);
+      // Prefill the Locke signer with whoever is sending (they can override).
+      const ln = document.getElementById('sigLockeName');
+      if (ln && !ln.value && typeof lockeUser !== 'undefined' && lockeUser && lockeUser.name) {
+        ln.value = lockeUser.name;
+      }
     }
   }
 
@@ -1813,6 +1829,8 @@
       counterparty_state:       (document.getElementById('sigCpState').value || '').trim(),
       counterparty_address:     (document.getElementById('sigCpAddress').value || '').trim(),
       effective_date:           (document.getElementById('sigEffDate').value || '').trim(),
+      locke_signer_name:        (document.getElementById('sigLockeName').value || '').trim(),
+      locke_signer_title:       (document.getElementById('sigLockeTitle').value || '').trim(),
     };
     const fields = {};
     Object.keys(fieldMap).forEach(k => { if (fieldMap[k]) fields[k] = fieldMap[k]; });
@@ -1824,7 +1842,7 @@
         signers: [{ email, name, role: 'signer' }],
         fields,
       });
-      ['sigName', 'sigEmail', 'sigCpName', 'sigCpEntity', 'sigCpState', 'sigCpAddress', 'sigEffDate']
+      ['sigName', 'sigEmail', 'sigCpName', 'sigCpEntity', 'sigCpState', 'sigCpAddress', 'sigEffDate', 'sigLockeName', 'sigLockeTitle']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       toggleSendSig();
       await renderSignatures();
