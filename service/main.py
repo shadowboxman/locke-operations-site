@@ -2604,6 +2604,9 @@ class SignatureCreateRequest(BaseModel):
     signers: list[SignatureSigner] = Field(min_length=1, max_length=10)
     subject: Optional[str] = Field(default=None, max_length=255)
     message: Optional[str] = Field(default=None, max_length=5000)
+    # Document merge-fields: api_id -> value (e.g. counterparty_name). Mapped to
+    # the provider template's prefill fields. Optional; empty = nothing prefilled.
+    fields: dict[str, str] = Field(default_factory=dict)
 
 
 def _serialize_signature(row: dict) -> dict:
@@ -2652,6 +2655,7 @@ async def create_signature(
             signers=signers,
             subject=payload.subject,
             message=payload.message,
+            fields=payload.fields,
             metadata={"org_id": str(org["id"]), "doc_type": payload.doc_type},
         )
     except Exception as exc:

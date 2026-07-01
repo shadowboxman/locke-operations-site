@@ -66,9 +66,15 @@ class ESignatureProvider(ABC):
         signers: list[Signer],
         subject: Optional[str] = None,
         message: Optional[str] = None,
+        fields: Optional[dict[str, str]] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> ProviderEnvelope:
-        """Create (and send) a signature request. Returns the envelope handle."""
+        """Create (and send) a signature request. Returns the envelope handle.
+
+        `fields` is an optional map of document merge-field key -> value (e.g.
+        counterparty_name -> "Acme LLC"). Adapters map these onto the provider's
+        prefill/template fields. Keys must match the api_ids configured on the
+        provider template. Empty/None values are ignored by the adapter."""
 
     @abstractmethod
     async def fetch_executed_pdf(self, external_id: str) -> bytes:

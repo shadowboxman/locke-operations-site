@@ -95,6 +95,7 @@ class SignWellProvider(ESignatureProvider):
         signers: list[Signer],
         subject: Optional[str] = None,
         message: Optional[str] = None,
+        fields: Optional[dict[str, str]] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> ProviderEnvelope:
         # [V1] Create-from-template. Recipients map to template placeholders by
@@ -105,6 +106,9 @@ class SignWellProvider(ESignatureProvider):
                 "placeholder_name": s.role,
                 "name": s.name,
                 "email": s.email,
+                # Without this, SignWell creates the document but leaves it as a
+                # draft and never emails the signer. Required to actually dispatch.
+                "send_email": True,
             }
             for i, s in enumerate(signers)
         ]
@@ -119,6 +123,13 @@ class SignWellProvider(ESignatureProvider):
             body["subject"] = subject
         if message:
             body["message"] = message
+        if fields:
+            # [V1] Prefill template merge-fields by api_id. These fields must be
+            # placed on the SignWell template and assigned to the sender (not the
+            # signer). Blank/None values are skipped so an unset field stays empty.
+            tf = [{"api_id": k, "value": v} for k, v in fields.items() if v not in (None, "")]
+            if tf:
+                body["template_fields"] = tf
         if metadata:
             # SignWell echoes custom metadata back on webhooks; handy for tracing.
             body["metadata"] = metadata

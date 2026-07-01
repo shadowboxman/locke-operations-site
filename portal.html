@@ -1024,6 +1024,29 @@
                   <label class="form-label" for="sigEmail">Signer email</label>
                   <input class="form-input" type="email" id="sigEmail" placeholder="jane@client.com">
                 </div>
+              </div>
+              <div style="margin-top:14px;margin-bottom:6px;color:var(--concrete);text-transform:uppercase;letter-spacing:0.1em;font-size:10px;">NDA details (merged into the document)</div>
+              <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+                <div class="form-field" style="flex:1 1 240px;">
+                  <label class="form-label" for="sigCpName">Counterparty legal name</label>
+                  <input class="form-input" type="text" id="sigCpName" placeholder="Acme Restoration LLC">
+                </div>
+                <div class="form-field" style="flex:1 1 240px;">
+                  <label class="form-label" for="sigCpEntity">Entity type</label>
+                  <input class="form-input" type="text" id="sigCpEntity" placeholder="a New York limited liability company">
+                </div>
+                <div class="form-field" style="flex:1 1 110px;">
+                  <label class="form-label" for="sigCpState">State</label>
+                  <input class="form-input" type="text" id="sigCpState" placeholder="New York">
+                </div>
+                <div class="form-field" style="flex:1 1 260px;">
+                  <label class="form-label" for="sigCpAddress">Address</label>
+                  <input class="form-input" type="text" id="sigCpAddress" placeholder="123 Main St, City, NY 10000">
+                </div>
+                <div class="form-field" style="flex:1 1 150px;">
+                  <label class="form-label" for="sigEffDate">Effective date</label>
+                  <input class="form-input" type="date" id="sigEffDate">
+                </div>
                 <button class="btn-primary" type="button" onclick="sendSignature()">Send NDA</button>
               </div>
               <div id="sendSigStatus" class="form-help" style="margin-top:10px;min-height:1px;"></div>
@@ -1715,7 +1738,15 @@
 
   function toggleSendSig() {
     const f = document.getElementById('sendSigForm');
-    if (f) f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
+    if (!f) return;
+    const opening = (f.style.display === 'none' || !f.style.display);
+    f.style.display = opening ? 'block' : 'none';
+    if (opening) {
+      // Default the effective date to today; counterparty fields stay manual
+      // until the org record carries entity type / state / address.
+      const d = document.getElementById('sigEffDate');
+      if (d && !d.value) d.value = new Date().toISOString().slice(0, 10);
+    }
   }
 
   async function renderSignatures() {
@@ -1752,12 +1783,12 @@
          <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return cancelSignature(event,'${s.id}')">Cancel</a>`
       : (s.document_id ? `<span class="doc-meta">Filed in Contracts</span>` : '');
     return `
-      <div class="mgmt-row" style="display:grid;grid-template-columns:1fr 130px 200px;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--hairline);">
+      <div class="mgmt-row" style="display:grid;grid-template-columns:minmax(0,1fr) 100px 150px;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--hairline);">
         <div style="min-width:0;">
           <div style="color:var(--navy);font-weight:500;">${escapeHtml((s.doc_type || '').toUpperCase())}</div>
-          <div style="color:var(--concrete);font-size:12px;margin-top:2px;">${escapeHtml(emails)}</div>
+          <div style="color:var(--concrete);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(emails)}</div>
         </div>
-        <div class="doc-meta" style="letter-spacing:0.06em;">${escapeHtml(SIG_STATUS_LABEL[s.status] || s.status || '')}</div>
+        <div class="doc-meta" style="letter-spacing:0.06em;white-space:nowrap;">${escapeHtml(SIG_STATUS_LABEL[s.status] || s.status || '')}</div>
         <div style="text-align:right;white-space:nowrap;">${actions}</div>
       </div>`;
   }
@@ -1767,14 +1798,28 @@
     const email = (document.getElementById('sigEmail').value || '').trim();
     const status = document.getElementById('sendSigStatus');
     if (!name || !email) { status.textContent = 'Enter the signer name and email.'; return; }
+
+    // NDA merge-fields. Keys must match the api_ids set on the SignWell template.
+    // Blank fields are dropped so an unset value stays empty in the document.
+    const fieldMap = {
+      counterparty_name:        (document.getElementById('sigCpName').value || '').trim(),
+      counterparty_entity_type: (document.getElementById('sigCpEntity').value || '').trim(),
+      counterparty_state:       (document.getElementById('sigCpState').value || '').trim(),
+      counterparty_address:     (document.getElementById('sigCpAddress').value || '').trim(),
+      effective_date:           (document.getElementById('sigEffDate').value || '').trim(),
+    };
+    const fields = {};
+    Object.keys(fieldMap).forEach(k => { if (fieldMap[k]) fields[k] = fieldMap[k]; });
+
     status.textContent = 'Sending...';
     try {
       await adminApi('POST', `/api/admin/orgs/${adminSelectedOrgId}/signatures`, {
         doc_type: 'nda',
         signers: [{ email, name, role: 'signer' }],
+        fields,
       });
-      document.getElementById('sigName').value = '';
-      document.getElementById('sigEmail').value = '';
+      ['sigName', 'sigEmail', 'sigCpName', 'sigCpEntity', 'sigCpState', 'sigCpAddress', 'sigEffDate']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       toggleSendSig();
       await renderSignatures();
     } catch (err) {
