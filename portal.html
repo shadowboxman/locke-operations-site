@@ -938,7 +938,7 @@
           </div>
         </div>
         <p class="greeting">
-          Audit reports, runbooks, monthly reviews, and signed contracts. Everything we've written for your account. We upload new documents here as we produce them.
+          Everything we've written for your account, plus the files you share with us. We add new documents here as we produce them.
         </p>
 
         <!-- Locke admin only: publish a deliverable to the org selected in the sidebar. -->
@@ -950,7 +950,6 @@
             <div class="form-field" style="flex:0 0 auto;">
               <label class="form-label" for="adminDocCategory">Category</label>
               <select id="adminDocCategory" class="form-select" style="width:auto;min-width:170px;">
-                <option value="audit_report">Audit report</option>
                 <option value="runbook">Runbook</option>
                 <option value="contract">Contract</option>
                 <option value="general">General</option>
@@ -968,9 +967,7 @@
             <span>All documents</span>
             <select id="docFilter" class="form-select" style="width:auto;min-width:160px;" onchange="renderDocList()">
               <option value="">All categories</option>
-              <option value="audit_report">Audit report</option>
               <option value="runbook">Runbook</option>
-              <option value="monthly_review">Monthly review</option>
               <option value="contract">Contract</option>
               <option value="general">General</option>
               <option value="implementation">Implementation (internal)</option>
