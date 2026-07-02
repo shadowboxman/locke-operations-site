@@ -2635,6 +2635,45 @@ def _serialize_signature(row: dict) -> dict:
     }
 
 
+_FN_BAD = set('\\/:*?"<>|')
+
+
+def _sanitize_filename_part(s: Optional[str]) -> str:
+    cleaned = "".join(c for c in (s or "") if c not in _FN_BAD and ord(c) >= 32)
+    return cleaned.strip()[:80]
+
+
+def _executed_doc_name(row: dict) -> str:
+    """Name for a filed executed document, e.g.
+    'NDA - Acme Restoration LLC (executed 2026-07-02).pdf'. Uses the counterparty
+    legal name captured at send time (stored in signature_requests.metadata.fields),
+    falling back to the first signer's name, then to a plain label."""
+    label = (row.get("doc_type") or "document").upper()
+    cp = None
+    md = row.get("metadata")
+    if isinstance(md, str):
+        try:
+            md = json.loads(md)
+        except Exception:
+            md = None
+    if isinstance(md, dict):
+        cp = (md.get("fields") or {}).get("counterparty_name")
+    if not cp:
+        signers = row.get("signers")
+        if isinstance(signers, str):
+            try:
+                signers = json.loads(signers)
+            except Exception:
+                signers = None
+        if isinstance(signers, list) and signers:
+            cp = (signers[0] or {}).get("name")
+    cp = _sanitize_filename_part(cp)
+    date_str = time.strftime("%Y-%m-%d")
+    if cp:
+        return f"{label} - {cp} (executed {date_str}).pdf"
+    return f"{label} (executed {date_str}).pdf"
+
+
 def _require_esign_provider():
     provider = get_provider()
     if provider is None:
@@ -2671,17 +2710,20 @@ async def create_signature(
         {"email": s.email, "name": s.name, "role": s.role, "status": "sent"}
         for s in payload.signers
     ])
+    # Persist the merge fields (counterparty name, etc.) so the executed PDF can be
+    # named meaningfully when it files, and for later reference.
+    meta_json = json.dumps({"fields": payload.fields or {}})
     sent_at_sql = "now()" if env.status != EnvelopeStatus.DRAFT else "NULL"
     async with admin_conn() as conn:
         row = await conn.fetchrow(
             f"""
             INSERT INTO signature_requests
-              (org_id, provider, external_id, doc_type, status, signers, created_by, sent_at)
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, {sent_at_sql})
+              (org_id, provider, external_id, doc_type, status, signers, created_by, sent_at, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, {sent_at_sql}, $8::jsonb)
             RETURNING *
             """,
             org["id"], provider.name, env.external_id, payload.doc_type,
-            env.status.value, signer_json, admin["id"],
+            env.status.value, signer_json, admin["id"], meta_json,
         )
 
     await _audit(
@@ -2849,7 +2891,7 @@ async def esign_webhook(request: Request):
                         doc_uuid = uuid.uuid4()
                         storage_key = r2.build_storage_key(row["org_id"], doc_uuid, 1)
                         r2.put_bytes(storage_key, pdf, "application/pdf")
-                        name = f"{row['doc_type'].upper()} (executed).pdf"
+                        name = _executed_doc_name(row)
                         drow = await conn.fetchrow(
                             """
                             INSERT INTO documents

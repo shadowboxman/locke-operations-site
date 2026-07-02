@@ -1796,7 +1796,7 @@
       actions = `<a href="#" class="note-edit" onclick="return remindSignature(event,'${s.id}')">Remind</a>
          <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return cancelSignature(event,'${s.id}')">Cancel</a>`;
     } else if (s.document_id) {
-      actions = `<a href="#" class="note-edit" data-doc-id="${s.document_id}" onclick="return downloadDocument(event, this)">Download</a>`;
+      actions = `<a href="#" title="Download" aria-label="Download" data-doc-id="${s.document_id}" onclick="return downloadDocument(event, this)" style="display:inline-flex;line-height:0;">${iconDownload()}</a>`;
     } else if (s.document_deleted) {
       actions = `<span class="doc-meta" style="color:var(--concrete);letter-spacing:0.06em;">File removed</span>`;
     } else {
@@ -1809,7 +1809,7 @@
           <div style="color:var(--concrete);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(emails)}</div>
         </div>
         <div class="doc-meta" style="letter-spacing:0.06em;white-space:nowrap;">${escapeHtml(SIG_STATUS_LABEL[s.status] || s.status || '')}</div>
-        <div style="text-align:right;white-space:nowrap;">${actions}</div>
+        <div style="display:flex;justify-content:flex-end;gap:14px;align-items:center;white-space:nowrap;">${actions}</div>
       </div>`;
   }
 
@@ -2324,6 +2324,21 @@
   let docsIsAdmin = false;
   let sharedById = {};
 
+  function iconDownload() {
+    return `<svg viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:15px;height:15px;display:block;pointer-events:none;">`
+      + `<path d="M7 2.5v6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`
+      + `<path d="M4.5 6l2.5 2.5L9.5 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`
+      + `<path d="M3 10.75v.75h8v-.75" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`
+      + `</svg>`;
+  }
+  function iconTrash() {
+    return `<svg viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:15px;height:15px;display:block;pointer-events:none;">`
+      + `<path d="M2.5 3.5h9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`
+      + `<path d="M5.5 3.5V2.5h3v1" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>`
+      + `<path d="M3.75 3.5l.45 8h5.6l.45-8" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>`
+      + `</svg>`;
+  }
+
   function docRow(d, admin) {
     const isShared = !!d.isShared;
     // The note is editable only on a client's own shared upload.
@@ -2336,11 +2351,11 @@
     } else if (d.note) {
       noteHtml = `<div class="shared-note">${escapeHtml(d.note)}</div>`;
     }
-    let actions = `<a href="#" data-doc-id="${d.id}" onclick="return downloadDocument(event, this)">Download</a>`;
+    let actions = `<a href="#" title="Download" aria-label="Download" data-doc-id="${d.id}" onclick="return downloadDocument(event, this)" style="display:inline-flex;line-height:0;">${iconDownload()}</a>`;
     if (admin) {
-      actions += ` &middot; <a href="#" data-doc-id="${d.id}" onclick="return adminDeleteDoc(event, this)" style="color:var(--oxide);">Delete</a>`;
+      actions += `<a href="#" title="Delete" aria-label="Delete" data-doc-id="${d.id}" onclick="return adminDeleteDoc(event, this)" style="display:inline-flex;line-height:0;color:var(--oxide);">${iconTrash()}</a>`;
     } else if (isShared && d.mine) {
-      actions += ` &middot; <a href="#" data-doc-id="${d.id}" onclick="return deleteSharedDocument(event, this)" style="color:var(--oxide);">Delete</a>`;
+      actions += `<a href="#" title="Delete" aria-label="Delete" data-doc-id="${d.id}" onclick="return deleteSharedDocument(event, this)" style="display:inline-flex;line-height:0;color:var(--oxide);">${iconTrash()}</a>`;
     }
     const catLabel = isShared ? 'Shared' : (DOC_CATEGORY_LABELS[d.category] || d.category || '—');
     const source = d.source === 'client'
@@ -2352,7 +2367,7 @@
         <div class="doc-meta">${escapeHtml(catLabel)}</div>
         <div class="doc-meta" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${source}</div>
         <div class="doc-meta">${fmtDate(d.uploaded_at)}</div>
-        <div class="doc-download" style="text-align:right;">${actions}</div>
+        <div class="doc-download" style="display:flex;justify-content:flex-end;gap:14px;align-items:center;">${actions}</div>
       </div>`;
   }
 
