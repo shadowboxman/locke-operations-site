@@ -2808,42 +2808,56 @@ async def esign_webhook(request: Request):
                 status.value, row["id"],
             )
 
-            # File the executed PDF exactly once.
-            if status == EnvelopeStatus.COMPLETED and not row["document_id"]:
-                try:
-                    pdf = await provider.fetch_executed_pdf(event.external_id)
-                except Exception as exc:
-                    # Almost always the finalized PDF just isn't ready yet. Return a
-                    # retryable status so the provider re-delivers and we file it on
-                    # a later attempt (idempotent: guarded on document_id above).
-                    log.warning("esign.webhook.fetch_pdf_failed id=%s err=%s (will retry)", row["id"], exc)
-                    raise HTTPException(status_code=503, detail="Signed PDF not ready yet; retry")
+            # File the executed PDF exactly once. Concurrent "completed" webhook
+            # deliveries can race the document_id guard (both read it null before
+            # either writes it back), so claim the row with SELECT ... FOR UPDATE
+            # and re-check inside the lock before doing any work. The second
+            # delivery blocks until the first commits, then sees document_id set
+            # and skips.
+            if status == EnvelopeStatus.COMPLETED:
+                async with conn.transaction():
+                    locked = await conn.fetchrow(
+                        "SELECT document_id FROM signature_requests WHERE id = $1 FOR UPDATE",
+                        row["id"],
+                    )
+                    if locked and locked["document_id"]:
+                        log.info("esign.webhook.already_filed signature=%s document=%s",
+                                 row["id"], locked["document_id"])
+                    else:
+                        try:
+                            pdf = await provider.fetch_executed_pdf(event.external_id)
+                        except Exception as exc:
+                            # Almost always the finalized PDF just isn't ready yet. Return a
+                            # retryable status so the provider re-delivers and we file it on
+                            # a later attempt (the row lock is released on rollback).
+                            log.warning("esign.webhook.fetch_pdf_failed id=%s err=%s (will retry)", row["id"], exc)
+                            raise HTTPException(status_code=503, detail="Signed PDF not ready yet; retry")
 
-                doc_uuid = uuid.uuid4()
-                storage_key = r2.build_storage_key(row["org_id"], doc_uuid, 1)
-                r2.put_bytes(storage_key, pdf, "application/pdf")
-                name = f"{row['doc_type'].upper()} (executed).pdf"
-                drow = await conn.fetchrow(
-                    """
-                    INSERT INTO documents
-                      (id, org_id, category, name, storage_key, version,
-                       size_bytes, content_type, uploaded_by, visibility, source)
-                    VALUES ($1, $2, 'contract', $3, $4, 1, $5, 'application/pdf', $6, 'client', 'locke')
-                    RETURNING id
-                    """,
-                    doc_uuid, row["org_id"], name, storage_key, len(pdf), row["created_by"],
-                )
-                await conn.execute(
-                    "UPDATE signature_requests SET document_id = $1, updated_at = now() WHERE id = $2",
-                    drow["id"], row["id"],
-                )
-                await _audit(
-                    actor_user_id=row["created_by"], action="signature.completed",
-                    resource_type="document", resource_id=drow["id"], org_id=row["org_id"],
-                    metadata={"doc_type": row["doc_type"], "provider": provider.name},
-                )
-                log.info("esign.webhook.filed signature=%s document=%s org=%s",
-                         row["id"], drow["id"], row["org_id"])
+                        doc_uuid = uuid.uuid4()
+                        storage_key = r2.build_storage_key(row["org_id"], doc_uuid, 1)
+                        r2.put_bytes(storage_key, pdf, "application/pdf")
+                        name = f"{row['doc_type'].upper()} (executed).pdf"
+                        drow = await conn.fetchrow(
+                            """
+                            INSERT INTO documents
+                              (id, org_id, category, name, storage_key, version,
+                               size_bytes, content_type, uploaded_by, visibility, source)
+                            VALUES ($1, $2, 'contract', $3, $4, 1, $5, 'application/pdf', $6, 'client', 'locke')
+                            RETURNING id
+                            """,
+                            doc_uuid, row["org_id"], name, storage_key, len(pdf), row["created_by"],
+                        )
+                        await conn.execute(
+                            "UPDATE signature_requests SET document_id = $1, updated_at = now() WHERE id = $2",
+                            drow["id"], row["id"],
+                        )
+                        await _audit(
+                            actor_user_id=row["created_by"], action="signature.completed",
+                            resource_type="document", resource_id=drow["id"], org_id=row["org_id"],
+                            metadata={"doc_type": row["doc_type"], "provider": provider.name},
+                        )
+                        log.info("esign.webhook.filed signature=%s document=%s org=%s",
+                                 row["id"], drow["id"], row["org_id"])
     except HTTPException:
         # Retryable signal (e.g. PDF not ready) — let it reach the provider so it retries.
         raise
