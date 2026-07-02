@@ -106,9 +106,10 @@ class SignWellProvider(ESignatureProvider):
                 "placeholder_name": s.role,
                 "name": s.name,
                 "email": s.email,
-                # Without this, SignWell creates the document but leaves it as a
-                # draft and never emails the signer. Required to actually dispatch.
-                "send_email": True,
+                # NOTE: do NOT set send_email here. SignWell rejects it unless
+                # embedded_signing is true ("send_email can only be set when
+                # embedded signing is true"). With draft=false + embedded=false,
+                # SignWell sends and emails recipients by default.
             }
             for i, s in enumerate(signers)
         ]
