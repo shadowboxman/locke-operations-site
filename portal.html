@@ -422,7 +422,7 @@
   }
   .doc-row {
     display: grid;
-    grid-template-columns: 1fr 140px 100px 150px;
+    grid-template-columns: minmax(0,1fr) 130px 170px 110px 130px;
     gap: 16px;
     align-items: center;
     padding: 14px 20px;
@@ -430,6 +430,14 @@
     font-size: 13px;
   }
   .doc-row:first-of-type { border-top: none; }
+  .doc-row-head {
+    color: var(--concrete);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 10px;
+    border-top: none;
+    border-bottom: 1px solid var(--hairline);
+  }
   .doc-name { color: var(--navy); font-weight: 500; }
   .doc-meta {
     font-family: "IBM Plex Mono", monospace;
@@ -956,56 +964,28 @@
         </div>
 
         <div class="panel">
-          <div class="doc-group">
-            <div class="doc-group-header">
-              <span>Audit reports</span>
-              <span class="doc-group-count" id="auditCount">0 files</span>
-            </div>
-            <div id="auditList">
-              <div class="empty">
-                <div class="empty-title">No audit reports yet</div>
-                <div class="empty-sub">Your audit reports will appear here once they're ready.</div>
-              </div>
-            </div>
+          <div class="doc-group-header" style="gap:16px;">
+            <span>All documents</span>
+            <select id="docFilter" class="form-select" style="width:auto;min-width:160px;" onchange="renderDocList()">
+              <option value="">All categories</option>
+              <option value="audit_report">Audit report</option>
+              <option value="runbook">Runbook</option>
+              <option value="monthly_review">Monthly review</option>
+              <option value="contract">Contract</option>
+              <option value="general">General</option>
+              <option value="implementation">Implementation (internal)</option>
+              <option value="__shared">Shared with Locke</option>
+            </select>
           </div>
-
-          <div class="doc-group">
-            <div class="doc-group-header">
-              <span>Runbooks</span>
-              <span class="doc-group-count" id="runbookCount">0 files</span>
-            </div>
-            <div id="runbookList">
-              <div class="empty">
-                <div class="empty-title">No runbooks yet</div>
-                <div class="empty-sub">Runbooks for your workflows will appear here.</div>
-              </div>
-            </div>
+          <div class="doc-row doc-row-head">
+            <div>Name</div>
+            <div>Category</div>
+            <div>Source</div>
+            <div>Date</div>
+            <div style="text-align:right;">Actions</div>
           </div>
-
-          <div class="doc-group" id="monthlyGroup" style="display:none;">
-            <div class="doc-group-header">
-              <span>Monthly reviews</span>
-              <span class="doc-group-count" id="reviewCount">0 files</span>
-            </div>
-            <div id="reviewList">
-              <div class="empty">
-                <div class="empty-title">No monthly reviews yet</div>
-                <div class="empty-sub">Monthly reviews will appear here once available.</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="doc-group">
-            <div class="doc-group-header">
-              <span>Contracts</span>
-              <span class="doc-group-count" id="contractCount">0 files</span>
-            </div>
-            <div id="contractList">
-              <div class="empty">
-                <div class="empty-title">No contracts yet</div>
-                <div class="empty-sub">Signed SOWs and the master services agreement will live here once executed.</div>
-              </div>
-            </div>
+          <div id="docUnifiedList">
+            <div class="empty"><div class="empty-sub">No documents yet.</div></div>
           </div>
 
           <!-- E-signature (admin-only; hidden unless a provider is configured) -->
@@ -1065,39 +1045,13 @@
             <div id="signatureList"></div>
           </div>
 
-          <div class="doc-group">
-            <div class="doc-group-header">
-              <span>General</span>
-              <span class="doc-group-count" id="generalCount">0 files</span>
-            </div>
-            <div id="generalList">
-              <div class="empty">
-                <div class="empty-sub">Other documents will appear here.</div>
-              </div>
-            </div>
-          </div>
         </div>
 
-        <!-- Locke-internal build records. Admin-only; clients never see this (RLS + hidden). -->
-        <div class="panel" id="implementationGroup" style="display:none; margin-top: 24px;">
+        <!-- Client only: upload a file TO Locke (appears in the list above as Source = Client). -->
+        <div class="panel" id="sharedUploadPanel" style="margin-top: 24px;">
           <div class="doc-group">
             <div class="doc-group-header">
-              <span>Implementation / reference <span style="color:var(--concrete);font-weight:400;font-size:12px;">· internal, not shown to the client</span></span>
-              <span class="doc-group-count" id="implementationCount">0 files</span>
-            </div>
-            <div id="implementationList">
-              <div class="empty">
-                <div class="empty-sub">Internal build records (stack, architecture, references) for this org. Don't store credentials here — keep those in the secrets manager and reference their location.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel" style="margin-top: 24px;">
-          <div class="doc-group">
-            <div class="doc-group-header">
-              <span>Shared with Locke</span>
-              <span class="doc-group-count" id="sharedCount">0 files</span>
+              <span>Share a file with Locke</span>
             </div>
             <p class="greeting" style="padding: 16px 20px 0;">
               Upload documentation about your systems, templates, or the processes you'd like us to automate. Files you share here go to Locke and are visible to your team.
@@ -1109,12 +1063,6 @@
               <input type="file" id="sharedFileInput" style="display:none">
               <button class="btn-primary" type="button" id="sharedUploadBtn">Upload a file</button>
               <span id="sharedUploadStatus" style="margin-left:12px;font-size:13px;color:var(--concrete);"></span>
-            </div>
-            <div id="sharedList">
-              <div class="empty">
-                <div class="empty-title">Nothing shared yet</div>
-                <div class="empty-sub">Anything you upload here is sent to Locke and visible to your team.</div>
-              </div>
             </div>
           </div>
         </div>
@@ -2321,7 +2269,15 @@
     return { categories, shared, total: docs.length };
   }
 
-  function docRow(d, admin, isShared) {
+  // Flattened list of all documents for the current org + the admin flag, so the
+  // category filter can re-render without re-fetching. sharedById lets inline note
+  // editing read the current note.
+  let allDocs = [];
+  let docsIsAdmin = false;
+  let sharedById = {};
+
+  function docRow(d, admin) {
+    const isShared = !!d.isShared;
     // The note is editable only on a client's own shared upload.
     const editableNote = (!admin && isShared && d.mine);
     let noteHtml = '';
@@ -2338,55 +2294,57 @@
     } else if (isShared && d.mine) {
       actions += ` &middot; <a href="#" data-doc-id="${d.id}" onclick="return deleteSharedDocument(event, this)" style="color:var(--oxide);">Delete</a>`;
     }
+    const catLabel = isShared ? 'Shared' : (DOC_CATEGORY_LABELS[d.category] || d.category || '—');
+    const source = d.source === 'client'
+      ? (d.uploader_email ? `Client · ${escapeHtml(d.uploader_email)}` : 'Client')
+      : 'Locke';
     return `
       <div class="doc-row">
-        <div class="doc-name">${escapeHtml(d.name)}${noteHtml}</div>
+        <div class="doc-name" style="min-width:0;">${escapeHtml(d.name)}${noteHtml}</div>
+        <div class="doc-meta">${escapeHtml(catLabel)}</div>
+        <div class="doc-meta" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${source}</div>
         <div class="doc-meta">${fmtDate(d.uploaded_at)}</div>
-        <div class="doc-meta">${fmtBytes(d.size_bytes)}</div>
-        <div class="doc-download">${actions}</div>
+        <div class="doc-download" style="text-align:right;">${actions}</div>
       </div>`;
   }
 
   function renderDocuments(data, admin) {
+    docsIsAdmin = admin;
     document.getElementById('docTotalLabel').textContent = data.total || 0;
-    // The implementation/reference group is Locke-internal: admin-only.
-    const ig = document.getElementById('implementationGroup');
-    if (ig) ig.style.display = admin ? '' : 'none';
-    for (const [category, els] of Object.entries(DOC_CATEGORIES)) {
-      const docs = (data.categories && data.categories[category]) || [];
-      const countEl = document.getElementById(els.count);
-      if (countEl) countEl.textContent = docs.length + (docs.length === 1 ? ' file' : ' files');
-      const listEl = document.getElementById(els.list);
-      if (!docs.length) {
-        // In admin mode, reset to a neutral empty line (we may be switching orgs);
-        // in client mode, leave the marketing empty-state copy untouched.
-        if (admin) listEl.innerHTML = `<div class="empty"><div class="empty-sub">No files in this category.</div></div>`;
-        continue;
-      }
-      listEl.innerHTML = docs.map(d => docRow(d, admin, false)).join('');
+
+    // Flatten Locke deliverables (grouped by category) + client uploads into one list.
+    allDocs = [];
+    const cats = data.categories || {};
+    for (const category of Object.keys(cats)) {
+      (cats[category] || []).forEach(d => allDocs.push({ ...d, category, source: 'locke', isShared: false }));
     }
-    renderShared(data.shared || [], admin);
+    (data.shared || []).forEach(d => allDocs.push({ ...d, category: '__shared', source: 'client', isShared: true }));
+    allDocs.sort((a, b) => String(b.uploaded_at || '').localeCompare(String(a.uploaded_at || '')));
+
+    sharedById = {};
+    (data.shared || []).forEach(d => { sharedById[d.id] = d; });
+
+    // Upload controls: admins publish deliverables; clients share files up.
+    const adminBar = document.getElementById('adminDocBar');
+    const sharedPanel = document.getElementById('sharedUploadPanel');
+    if (adminBar) adminBar.style.display = admin ? '' : 'none';
+    if (sharedPanel) sharedPanel.style.display = admin ? 'none' : '';
+
+    renderDocList();
   }
 
-  // Last-rendered shared items, keyed by id, so inline note editing can read
-  // the current note without another fetch.
-  let sharedById = {};
-
-  function renderShared(items, admin) {
-    sharedById = {};
-    items.forEach(d => { sharedById[d.id] = d; });
-    const countEl = document.getElementById('sharedCount');
-    if (countEl) countEl.textContent = items.length + (items.length === 1 ? ' file' : ' files');
-    const el = document.getElementById('sharedList');
-    if (!items.length) {
-      el.innerHTML = `
-        <div class="empty">
-          <div class="empty-title">Nothing shared yet</div>
-          <div class="empty-sub">${admin ? 'This client has not shared any files yet.' : 'Anything you upload here is sent to Locke and visible to your team.'}</div>
-        </div>`;
+  // Render the unified list, applying the current category filter.
+  function renderDocList() {
+    const list = document.getElementById('docUnifiedList');
+    if (!list) return;
+    const sel = document.getElementById('docFilter');
+    const filter = sel ? sel.value : '';
+    const docs = filter ? allDocs.filter(d => d.category === filter) : allDocs;
+    if (!docs.length) {
+      list.innerHTML = `<div class="empty"><div class="empty-sub">${allDocs.length ? 'No documents in this category.' : 'No documents yet.'}</div></div>`;
       return;
     }
-    el.innerHTML = items.map(d => docRow(d, admin, true)).join('');
+    list.innerHTML = docs.map(d => docRow(d, docsIsAdmin)).join('');
   }
 
   async function adminUploadDeliverable(file) {
