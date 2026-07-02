@@ -9,7 +9,8 @@ scraped at build time; confirm these on a SignWell test account before launch,
 they are isolated here so a fix touches only this file):
   [V1] Create-from-template request fields (template_id vs template_ids,
        recipients[].placeholder_name) and the response id/status field names.
-  [V2] Completed-PDF retrieval: GET /documents/{id}/ returns `completed_pdf_url`.
+  [V2] Completed-PDF retrieval: prefer the dedicated GET /documents/{id}/completed_pdf/
+       endpoint (PDF binary); `completed_pdf_url` on the document object is a fallback.
   [V3] Webhook authenticity: SignWell signs each event with an HMAC-SHA256 hash
        of `event.time` using your API key, delivered at payload.event.hash.
        Confirm the exact hashed value + algorithm.
@@ -17,7 +18,6 @@ they are isolated here so a fix touches only this file):
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import hmac
 import logging
@@ -152,23 +152,53 @@ class SignWellProvider(ESignatureProvider):
         return ProviderEnvelope(external_id=external_id, status=status, raw=data)
 
     async def fetch_executed_pdf(self, external_id: str) -> bytes:
-        # [V2] SignWell finalizes the completed PDF asynchronously, so
-        # `completed_pdf_url` is often null for a few seconds right after the
-        # completion webhook fires. Poll briefly; if still not ready, raise so the
-        # webhook handler returns a retryable status and SignWell tries again.
+        # [V2] Retrieve the executed PDF. SignWell's documented server-side path is
+        # the dedicated `/documents/{id}/completed_pdf/` endpoint (returns the PDF
+        # binary). The `completed_pdf_url` field on the document object is the
+        # "url only" alternative and, in practice, stayed null across long polls
+        # even after the document reported `completed` (test-mode documents may not
+        # publish it at all). So try the dedicated endpoint first, fall back to the
+        # field, and if neither yields a PDF, log exactly what SignWell returned and
+        # raise so the webhook returns a retryable status.
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            # 1) Dedicated endpoint. Returns the PDF binary directly on success.
+            cp = await client.get(
+                f"{API_BASE}/documents/{external_id}/completed_pdf/",
+                headers=self._headers(),
+            )
+            if cp.status_code < 300 and "application/pdf" in cp.headers.get("content-type", "").lower():
+                return cp.content
+
+            # Some responses hand back a JSON link instead of raw bytes.
             url = None
-            for _ in range(8):
+            if cp.status_code < 300:
+                try:
+                    j = cp.json()
+                    url = j.get("file_url") or j.get("url") or j.get("completed_pdf_url")
+                except Exception:
+                    url = None
+            else:
+                log.warning("signwell.completed_pdf status=%s body=%s", cp.status_code, cp.text[:300])
+
+            # 2) Fallback: completed_pdf_url on the document object.
+            if not url:
                 meta = await client.get(f"{API_BASE}/documents/{external_id}/", headers=self._headers())
                 if meta.status_code >= 300:
                     log.error("signwell.fetch_meta failed status=%s body=%s", meta.status_code, meta.text[:300])
                     meta.raise_for_status()
-                url = meta.json().get("completed_pdf_url")
-                if url:
-                    break
-                await asyncio.sleep(2)
+                doc = meta.json()
+                url = doc.get("completed_pdf_url")
+                if not url:
+                    # Definitive diagnostic: what did SignWell actually send back?
+                    log.error(
+                        "signwell.no_pdf id=%s status=%s test_mode=%s keys=%s",
+                        external_id, doc.get("status"), doc.get("test_mode"), sorted(doc.keys()),
+                    )
+
             if not url:
-                raise RuntimeError(f"SignWell document {external_id} has no completed_pdf_url yet")
+                raise RuntimeError(f"SignWell document {external_id} has no completed PDF yet")
+
+            # Signed download URL; no API key needed on the object store request.
             pdf = await client.get(url)
             pdf.raise_for_status()
             return pdf.content
