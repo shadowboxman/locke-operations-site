@@ -991,7 +991,10 @@
           <div class="doc-group">
             <div class="doc-group-header">
               <span>NDA signatures</span>
-              <button class="btn-primary" type="button" id="sendSigBtn" onclick="toggleSendSig()" style="padding:8px 14px;font-size:11px;">Send an NDA</button>
+              <div style="display:flex;gap:8px;">
+                <button type="button" id="sigHistoryBtn" onclick="toggleSigHistory()" style="display:none;padding:8px 14px;font-size:11px;background:transparent;border:1px solid var(--hairline-strong);color:var(--concrete);cursor:pointer;letter-spacing:0.06em;text-transform:uppercase;">History</button>
+                <button class="btn-primary" type="button" id="sendSigBtn" onclick="toggleSendSig()" style="padding:8px 14px;font-size:11px;">Send an NDA</button>
+              </div>
             </div>
             <p class="greeting" style="padding:12px 20px 0;">
               Send this organization's mutual NDA for e-signature. Open requests and the executed PDF appear below.
@@ -1720,6 +1723,13 @@
     }
   }
 
+  let sigShowHistory = false;
+
+  function toggleSigHistory() {
+    sigShowHistory = !sigShowHistory;
+    renderSignatures();
+  }
+
   async function renderSignatures() {
     const panel = document.getElementById('signaturePanel');
     const list = document.getElementById('signatureList');
@@ -1738,29 +1748,50 @@
       list.innerHTML = `<div class="empty"><div class="empty-sub">Could not load signature requests.</div></div>`;
       return;
     }
-    const sigs = data.signatures || [];
-    // Hide "Send for signature" while a request is still open, to avoid duplicate
-    // NDAs. It returns once the open one is completed, canceled, or declined.
+    const all = data.signatures || [];
+    // A row whose executed PDF was deleted is history-only: hidden from the
+    // default list and revealed via the History toggle. The signing record is
+    // preserved server-side as an audit trail either way.
+    const hiddenCount = all.filter(s => s.document_deleted).length;
+    const visible = sigShowHistory ? all : all.filter(s => !s.document_deleted);
+
+    // Hide "Send an NDA" while a request is still open, to avoid duplicate NDAs.
     const sendBtn = document.getElementById('sendSigBtn');
-    const hasOpen = sigs.some(s => !['completed', 'canceled', 'declined'].includes(s.status));
+    const hasOpen = all.some(s => !['completed', 'canceled', 'declined'].includes(s.status));
     if (sendBtn) sendBtn.style.display = hasOpen ? 'none' : '';
     if (hasOpen) { const f = document.getElementById('sendSigForm'); if (f) f.style.display = 'none'; }
-    if (!sigs.length) {
-      list.innerHTML = `<div class="empty"><div class="empty-sub">No signature requests yet.</div></div>`;
+
+    // History toggle only appears once there's at least one archived (deleted-file) row.
+    const historyBtn = document.getElementById('sigHistoryBtn');
+    if (historyBtn) {
+      historyBtn.style.display = (hiddenCount > 0 || sigShowHistory) ? '' : 'none';
+      historyBtn.textContent = sigShowHistory ? 'Hide history' : 'History';
+    }
+
+    if (!visible.length) {
+      const hint = (!sigShowHistory && hiddenCount > 0)
+        ? 'No active signature requests. Click History to view past signatures.'
+        : 'No signature requests yet.';
+      list.innerHTML = `<div class="empty"><div class="empty-sub">${hint}</div></div>`;
       return;
     }
-    list.innerHTML = sigs.map(sigRow).join('');
+    list.innerHTML = visible.map(sigRow).join('');
   }
 
   function sigRow(s) {
     const emails = (s.signers || []).map(x => x.email).filter(Boolean).join(', ');
     const open = !['completed', 'canceled', 'declined'].includes(s.status);
-    const actions = open
-      ? `<a href="#" class="note-edit" onclick="return remindSignature(event,'${s.id}')">Remind</a>
-         <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return cancelSignature(event,'${s.id}')">Cancel</a>`
-      : (s.document_id
-          ? `<a href="#" class="note-edit" data-doc-id="${s.document_id}" onclick="return downloadDocument(event, this)">Download</a>`
-          : '');
+    let actions;
+    if (open) {
+      actions = `<a href="#" class="note-edit" onclick="return remindSignature(event,'${s.id}')">Remind</a>
+         <a href="#" class="note-edit" style="color:var(--oxide);" onclick="return cancelSignature(event,'${s.id}')">Cancel</a>`;
+    } else if (s.document_id) {
+      actions = `<a href="#" class="note-edit" data-doc-id="${s.document_id}" onclick="return downloadDocument(event, this)">Download</a>`;
+    } else if (s.document_deleted) {
+      actions = `<span class="doc-meta" style="color:var(--concrete);letter-spacing:0.06em;">File removed</span>`;
+    } else {
+      actions = '';
+    }
     return `
       <div class="mgmt-row" style="display:grid;grid-template-columns:minmax(0,1fr) 100px 150px;gap:12px;align-items:center;padding:11px 20px;border-top:1px solid var(--hairline);">
         <div style="min-width:0;">

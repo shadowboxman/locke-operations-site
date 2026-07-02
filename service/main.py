@@ -2616,6 +2616,7 @@ def _serialize_signature(row: dict) -> dict:
             signers = json.loads(signers)
         except Exception:
             signers = []
+    document_deleted = bool(row.get("document_deleted"))
     return {
         "id": str(row["id"]),
         "org_id": str(row["org_id"]),
@@ -2623,7 +2624,11 @@ def _serialize_signature(row: dict) -> dict:
         "doc_type": row["doc_type"],
         "status": row["status"],
         "signers": signers or [],
-        "document_id": str(row["document_id"]) if row.get("document_id") else None,
+        # Null the document_id once the executed PDF is deleted, so the row stops
+        # offering a (now dead) Download link. document_deleted flags it so the UI
+        # can hide it from the default list and surface it under History instead.
+        "document_id": str(row["document_id"]) if (row.get("document_id") and not document_deleted) else None,
+        "document_deleted": document_deleted,
         "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
         "sent_at": row["sent_at"].isoformat() if row.get("sent_at") else None,
         "completed_at": row["completed_at"].isoformat() if row.get("completed_at") else None,
@@ -2692,7 +2697,15 @@ async def create_signature(
 async def list_signatures(org_id: str, admin: dict = Depends(require_locke_admin)):
     async with admin_conn() as conn:
         rows = await conn.fetch(
-            "SELECT * FROM signature_requests WHERE org_id = $1 ORDER BY created_at DESC",
+            """
+            SELECT sr.*,
+                   (sr.document_id IS NOT NULL AND d.id IS NULL) AS document_deleted
+              FROM signature_requests sr
+              LEFT JOIN documents d
+                ON d.id = sr.document_id AND d.deleted_at IS NULL
+             WHERE sr.org_id = $1
+             ORDER BY sr.created_at DESC
+            """,
             uuid.UUID(org_id),
         )
     return {"signatures": [_serialize_signature(dict(r)) for r in rows]}
