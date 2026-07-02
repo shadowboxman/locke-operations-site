@@ -992,7 +992,12 @@
             <div class="doc-group-header">
               <span>NDA signatures</span>
               <div style="display:flex;gap:8px;">
-                <button type="button" id="sigHistoryBtn" onclick="toggleSigHistory()" style="display:none;padding:8px 14px;font-size:11px;background:transparent;border:1px solid var(--hairline-strong);color:var(--concrete);cursor:pointer;letter-spacing:0.06em;text-transform:uppercase;">History</button>
+                <button type="button" id="sigHistoryBtn" onclick="toggleSigHistory()" title="View history" aria-label="View history" aria-pressed="false" style="display:none;padding:7px 9px;background:transparent;border:1px solid var(--hairline-strong);color:var(--concrete);cursor:pointer;line-height:0;">
+                  <svg viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;display:block;">
+                    <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.4"/>
+                    <path d="M7 4v3h2.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
                 <button class="btn-primary" type="button" id="sendSigBtn" onclick="toggleSendSig()" style="padding:8px 14px;font-size:11px;">Send an NDA</button>
               </div>
             </div>
@@ -1765,7 +1770,12 @@
     const historyBtn = document.getElementById('sigHistoryBtn');
     if (historyBtn) {
       historyBtn.style.display = (hiddenCount > 0 || sigShowHistory) ? '' : 'none';
-      historyBtn.textContent = sigShowHistory ? 'Hide history' : 'History';
+      // Icon-only toggle: show active state via color rather than a text swap.
+      historyBtn.style.color = sigShowHistory ? 'var(--oxide)' : 'var(--concrete)';
+      historyBtn.style.borderColor = sigShowHistory ? 'var(--oxide)' : 'var(--hairline-strong)';
+      historyBtn.title = sigShowHistory ? 'Hide history' : 'View history';
+      historyBtn.setAttribute('aria-label', historyBtn.title);
+      historyBtn.setAttribute('aria-pressed', sigShowHistory ? 'true' : 'false');
     }
 
     if (!visible.length) {
