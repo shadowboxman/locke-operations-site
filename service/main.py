@@ -2813,8 +2813,11 @@ async def esign_webhook(request: Request):
                 try:
                     pdf = await provider.fetch_executed_pdf(event.external_id)
                 except Exception as exc:
-                    log.exception("esign.webhook.fetch_pdf_failed id=%s err=%s", row["id"], exc)
-                    return {"ok": True}
+                    # Almost always the finalized PDF just isn't ready yet. Return a
+                    # retryable status so the provider re-delivers and we file it on
+                    # a later attempt (idempotent: guarded on document_id above).
+                    log.warning("esign.webhook.fetch_pdf_failed id=%s err=%s (will retry)", row["id"], exc)
+                    raise HTTPException(status_code=503, detail="Signed PDF not ready yet; retry")
 
                 doc_uuid = uuid.uuid4()
                 storage_key = r2.build_storage_key(row["org_id"], doc_uuid, 1)
@@ -2841,6 +2844,9 @@ async def esign_webhook(request: Request):
                 )
                 log.info("esign.webhook.filed signature=%s document=%s org=%s",
                          row["id"], drow["id"], row["org_id"])
+    except HTTPException:
+        # Retryable signal (e.g. PDF not ready) — let it reach the provider so it retries.
+        raise
     except Exception as exc:
         log.exception("esign.webhook.handler_failed external_id=%s err=%s", event.external_id, exc)
 

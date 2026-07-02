@@ -17,6 +17,7 @@ they are isolated here so a fix touches only this file):
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -151,13 +152,21 @@ class SignWellProvider(ESignatureProvider):
         return ProviderEnvelope(external_id=external_id, status=status, raw=data)
 
     async def fetch_executed_pdf(self, external_id: str) -> bytes:
-        # [V2] GET the document, follow completed_pdf_url to download the bytes.
+        # [V2] SignWell finalizes the completed PDF asynchronously, so
+        # `completed_pdf_url` is often null for a few seconds right after the
+        # completion webhook fires. Poll briefly; if still not ready, raise so the
+        # webhook handler returns a retryable status and SignWell tries again.
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            meta = await client.get(f"{API_BASE}/documents/{external_id}/", headers=self._headers())
-            if meta.status_code >= 300:
-                log.error("signwell.fetch_meta failed status=%s body=%s", meta.status_code, meta.text[:300])
-                meta.raise_for_status()
-            url = meta.json().get("completed_pdf_url")
+            url = None
+            for _ in range(8):
+                meta = await client.get(f"{API_BASE}/documents/{external_id}/", headers=self._headers())
+                if meta.status_code >= 300:
+                    log.error("signwell.fetch_meta failed status=%s body=%s", meta.status_code, meta.text[:300])
+                    meta.raise_for_status()
+                url = meta.json().get("completed_pdf_url")
+                if url:
+                    break
+                await asyncio.sleep(2)
             if not url:
                 raise RuntimeError(f"SignWell document {external_id} has no completed_pdf_url yet")
             pdf = await client.get(url)
