@@ -1039,6 +1039,10 @@
                   <label class="form-label" for="sigCpState">State</label>
                   <input class="form-input" type="text" id="sigCpState" placeholder="New York">
                 </div>
+                <div class="form-field" style="flex:1 1 260px;">
+                  <label class="form-label" for="sigCpAddress">Address</label>
+                  <input class="form-input" type="text" id="sigCpAddress" placeholder="123 Main St, City, NY 10000">
+                </div>
                 <div class="form-field" style="flex:1 1 150px;">
                   <label class="form-label" for="sigEffDate">Effective date</label>
                   <input class="form-input" type="date" id="sigEffDate">
@@ -1833,6 +1837,7 @@
       counterparty_name:        (document.getElementById('sigCpName').value || '').trim(),
       counterparty_entity_type: (document.getElementById('sigCpEntity').value || '').trim(),
       counterparty_state:       (document.getElementById('sigCpState').value || '').trim(),
+      counterparty_address:     (document.getElementById('sigCpAddress').value || '').trim(),
       effective_date:           effFmt,
       locke_signer_name:        (document.getElementById('sigLockeName').value || '').trim(),
       locke_signer_title:       (document.getElementById('sigLockeTitle').value || '').trim(),
@@ -1848,7 +1853,7 @@
         signers: [{ email, name, role: 'signer' }],
         fields,
       });
-      ['sigName', 'sigEmail', 'sigCpName', 'sigCpEntity', 'sigCpState', 'sigEffDate', 'sigLockeName', 'sigLockeTitle']
+      ['sigName', 'sigEmail', 'sigCpName', 'sigCpEntity', 'sigCpState', 'sigCpAddress', 'sigEffDate', 'sigLockeName', 'sigLockeTitle']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       toggleSendSig();
       await renderSignatures();
