@@ -42,6 +42,7 @@ INDUSTRY_MAP = {
     "restoration": "Restoration",
     "hospitality": "Hospitality",
     "ae": "A&E",
+    "accounting": "Accounting & Bookkeeping",
     "other": "Other",
 }
 RESPONSE_MAP = {

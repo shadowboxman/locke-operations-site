@@ -124,7 +124,7 @@ class Contact(BaseModel):
 
 
 class Answers(BaseModel):
-    industry: Literal["trades", "restoration", "hospitality", "ae", "other"]
+    industry: Literal["trades", "restoration", "hospitality", "ae", "accounting", "other"]
     team: int = Field(ge=0, le=100000)
     tasks: list[str] = Field(default_factory=list, max_length=50)
     hours: int = Field(ge=0, le=400)

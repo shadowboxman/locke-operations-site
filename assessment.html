@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Locke Operations — Value Leakage Assessment</title>
+<title>Locke Operations · Value Leakage Assessment</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -646,8 +646,26 @@ const SEGMENTS = {
       { v: 'data_entry',       label: 'Manual data entry between your systems',                      hours: 4, diff: 1, name: 'Cross-system data sync' }
     ]
   },
+  accounting: {
+    label: 'Accounting or bookkeeping firm (CPA, EA, bookkeeping)',
+    intakeLabel: 'new client inquiry',
+    intakeUnit: 'client',
+    valueLabel: 'average annual client fee',
+    tasks: [
+      { v: 'client_docs',      label: 'Client document chase (missing statements, receipts, PBC lists)', hours: 6, diff: 1, name: 'Client document request and chase workflow' },
+      { v: 'engagement_ltrs',  label: 'Engagement letter generation and signature chase',                hours: 3, diff: 1, name: 'Engagement letter automation' },
+      { v: 'organizer_chase',  label: 'Tax organizer distribution and completion chase',                 hours: 3, diff: 1, name: 'Organizer distribution and follow-up' },
+      { v: 'client_onboard',   label: 'New client onboarding and system access setup',                   hours: 4, diff: 2, name: 'Client onboarding workflow' },
+      { v: 'recurring_billing',label: 'Recurring billing, WIP tracking, and payment chase',              hours: 4, diff: 1, name: 'Billing and payment chase automation' },
+      { v: 'deadline_track',   label: 'Filing deadline and extension tracking',                          hours: 3, diff: 1, name: 'Deadline tracking and client notification' },
+      { v: 'source_intake',    label: 'Source document intake, sorting, and filing',                     hours: 5, diff: 2, name: 'Document intake and filing automation' },
+      { v: 'status_updates',   label: 'Routine client status questions and updates',                     hours: 4, diff: 2, name: 'Client status update workflow' },
+      { v: 'workpapers',       label: 'Workpaper assembly and period rollforward',                       hours: 4, diff: 2, name: 'Workpaper rollforward automation' },
+      { v: 'data_entry',       label: 'Manual data entry between practice, tax, and accounting systems', hours: 4, diff: 1, name: 'Cross-system data sync' }
+    ]
+  },
   other: {
-    label: 'Other admin-heavy service business',
+    label: 'Other admin-heavy business',
     intakeLabel: 'inquiry',
     intakeUnit: 'customer',
     valueLabel: 'average customer value',
@@ -699,7 +717,7 @@ const QUESTIONS = [
   {
     id: 'tasks',
     title: "Which of these eat your team's time?",
-    helper: 'Pick all that apply. Each one maps to a productized workflow we build.',
+    helper: 'Pick all that apply. These are the kinds of tasks we automate.',
     type: 'multi',
     getOptions: () => seg().tasks.map(t => ({ v: t.v, label: t.label }))
   },
@@ -1102,7 +1120,7 @@ function renderResults() {
   html += `
     <div class="cta-section">
       <h3>Want a human to validate this number?</h3>
-      <p>Thirty-minute fit call. We'll walk your stack, confirm what's achievable, and tell you whether the Audit is worth it.</p>
+      <p>Thirty-minute call. We'll walk your stack, confirm what's achievable, and tell you what we'd fix first.</p>
       <div class="cta-row">
         <button class="btn btn-light" id="book">Book a fit call</button>
         <button class="btn btn-outline" id="restart">Start over</button>

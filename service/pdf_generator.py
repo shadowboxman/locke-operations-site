@@ -77,6 +77,18 @@ TASKS_BY_INDUSTRY: dict[str, list[dict[str, Any]]] = {
         {"v": "dcaa",             "hours": 3, "diff": 2, "name": "Federal contract compliance reporting"},
         {"v": "data_entry",       "hours": 4, "diff": 1, "name": "Cross-system data sync"},
     ],
+    "accounting": [
+        {"v": "client_docs",       "hours": 6, "diff": 1, "name": "Client document request and chase workflow"},
+        {"v": "engagement_ltrs",   "hours": 3, "diff": 1, "name": "Engagement letter automation"},
+        {"v": "organizer_chase",   "hours": 3, "diff": 1, "name": "Organizer distribution and follow-up"},
+        {"v": "client_onboard",    "hours": 4, "diff": 2, "name": "Client onboarding workflow"},
+        {"v": "recurring_billing", "hours": 4, "diff": 1, "name": "Billing and payment chase automation"},
+        {"v": "deadline_track",    "hours": 3, "diff": 1, "name": "Deadline tracking and client notification"},
+        {"v": "source_intake",     "hours": 5, "diff": 2, "name": "Document intake and filing automation"},
+        {"v": "status_updates",    "hours": 4, "diff": 2, "name": "Client status update workflow"},
+        {"v": "workpapers",        "hours": 4, "diff": 2, "name": "Workpaper rollforward automation"},
+        {"v": "data_entry",        "hours": 4, "diff": 1, "name": "Cross-system data sync"},
+    ],
     "other": [
         {"v": "cust_followup", "hours": 3, "diff": 1, "name": "Customer follow-up workflow"},
         {"v": "invoicing",     "hours": 3, "diff": 1, "name": "Invoicing and payment automation"},
@@ -94,7 +106,8 @@ TASKS_BY_INDUSTRY: dict[str, list[dict[str, Any]]] = {
 RESPONSE_LIFTS = {"fast": 0, "hour": 0.005, "day": 0.015, "slow": 0.025}
 INDUSTRY_DISPLAY = {
     "trades": "Trades", "restoration": "Restoration",
-    "hospitality": "Hospitality", "ae": "A&E", "other": "Other",
+    "hospitality": "Hospitality", "ae": "A&E",
+    "accounting": "Accounting & Bookkeeping", "other": "Other",
 }
 
 INDUSTRY_EQUIVS = {
@@ -113,6 +126,10 @@ INDUSTRY_EQUIVS = {
     "ae": [
         "A part-time project coordinator's annual cost, fully loaded.",
         "About two months of a senior designer's billable capacity.",
+    ],
+    "accounting": [
+        "A part-time admin coordinator's annual cost, fully loaded.",
+        "Several hundred billable hours returned to the firm each year.",
     ],
     "other": [
         "A part-time admin coordinator's annual cost, fully loaded.",
