@@ -150,26 +150,13 @@
     height: 340px;
     background: var(--navy);
     border: 1px solid var(--navy);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
+    overflow: hidden;
   }
-  .founder-photo .initials {
-    font-family: "IBM Plex Sans", sans-serif;
-    font-weight: 600;
-    font-size: 76px;
-    line-height: 1;
-    color: var(--bone);
-    letter-spacing: 0.02em;
-  }
-  .founder-photo .ph-note {
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: var(--concrete);
+  .founder-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
   .founder-label {
     font-family: "IBM Plex Mono", monospace;
@@ -303,9 +290,8 @@
   <section class="operator">
     <div class="container">
       <div class="founder-grid">
-        <div class="founder-photo" aria-label="Founder photo placeholder">
-          <div class="initials">DL</div>
-          <div class="ph-note">Photo placeholder</div>
+        <div class="founder-photo">
+          <img src="assets/6b1e93a7.jpg" alt="Dan Lee, founder of Locke Operations" width="280" height="340" loading="lazy">
         </div>
         <div class="founder-body">
           <div class="founder-label">Who's behind it</div>
