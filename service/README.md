@@ -67,7 +67,7 @@ See [.env.example](.env.example). All required vars must be set in Railway befor
 - `pdf_generator.py` — WeasyPrint PDF generation. Math + template substitution.
 - `hubspot_client.py` — HubSpot Forms API submission.
 - `email_client.py` — Resend send with PDF attachment.
-- `assessment-result-template.html` — HTML template that becomes the PDF. **Source of truth** for the PDF design; copied here from `/Marketing/brand/templates/` for self-containment.
+- `assessment-result-template.html` — HTML template that becomes the PDF. **The only copy** as of 2026-07-06: the duplicate in `/Marketing/brand/templates/` was deleted and the manual-send script (`generate-assessment-pdf.py`, Playbook 06) now reads this file. Edit it here; nothing else to sync.
 - `Dockerfile` — Production image; installs Pango/Cairo + DejaVu fonts.
 - `railway.json` — Railway build + healthcheck config.
 
@@ -81,3 +81,20 @@ The math lives in TWO places (intentionally — client-side for instant feedback
 These MUST stay in sync. The spec is `/Playbooks/05 - Assessment Scoring Algorithm.md`. If you change one, change the other and bump the version in this README.
 
 Last sync: 2026-05-23 (IDC heuristic, 20% of time_savings).
+
+## When adding or changing an industry segment
+
+A segment lives in FOUR places. All four must change together or submissions fail or misreport:
+
+1. `/assessment.html` → `SEGMENTS` (JS: labels, intake framing, task list with `v`/`hours`/`diff`/`name`)
+2. `/service/main.py` → `Answers.industry` Literal (pydantic rejects unknown values with a 422)
+3. `/service/pdf_generator.py` → `TASKS_BY_INDUSTRY` (must mirror the JS task list exactly), `INDUSTRY_DISPLAY`, `INDUSTRY_EQUIVS`
+4. `/service/hubspot_client.py` → `INDUSTRY_MAP` (internal key → HubSpot display value)
+
+Plus one thing outside the repo: if the `assessment_industry` HubSpot property is an enumeration, add the new display value as an option in the HubSpot portal (dev now, prod at cutover) or those form submissions will be rejected.
+
+Segments as of 2026-07-06: trades, restoration, hospitality, ae, accounting, other.
+
+## Positioning constraints on copy (2026-07-06)
+
+The public site is deliberately problem-specific and process-vague. In this repo's copy (assessment.html, the PDF template, email bodies): no named packages (Audit/Build/Run are internal-only), no prices, no credits, no guarantees. The results gate promises the report is free and emailed immediately — the background task makes that true, so don't move PDF/email out of the submit path without changing the copy. See `/Playbooks/00 - Engagement Overview.md` for the full language map.
