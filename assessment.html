@@ -830,7 +830,7 @@ function renderCover() {
     <div class="brand"><a href="index.html">← Locke Operations</a> · Value Leakage Assessment</div>
     <div class="card cover" style="padding: 48px 36px;">
       <h1>How much margin is your back office quietly losing?</h1>
-      <p class="lead">Ten quick questions. You'll get a defensible dollar range, the three workflows leaking the most money, and our take on whether we can help.</p>
+      <p class="lead">Ten quick questions. You'll get a defensible dollar range, the workflows leaking the most money, and our take on whether we can help.</p>
       <button class="btn btn-primary" id="start">Start the assessment</button>
       <p class="reassure">About three minutes. No email required to see your number.</p>
     </div>
@@ -1085,7 +1085,7 @@ function renderResults() {
     if (state.emailUnlocked) {
       html += `
         <div class="panel" style="margin-top:24px">
-          <h3>Your top ${r.wins.length} automation wins</h3>
+          <h3>Where we'd start</h3>
           <div class="wins">${winsHtml}</div>
         </div>
       `;
@@ -1094,7 +1094,7 @@ function renderResults() {
         <div class="gate-wrap">
           <div class="gate-overlay">
             <div class="gate-box">
-              <strong>See the ${r.wins.length} automations we'd start with</strong>
+              <strong>See the automations we'd start with</strong>
               <div class="gate-sub">Completely free, no catch, no sales call. The full report, with the difficulty and dollar value of each, is emailed to you immediately.</div>
               <div class="gate-fields">
                 <div class="gate-row">
@@ -1109,7 +1109,7 @@ function renderResults() {
             </div>
           </div>
           <div class="panel gated">
-            <h3>Your top ${r.wins.length} automation wins</h3>
+            <h3>Where we'd start</h3>
             <div class="wins">${winsHtml}</div>
           </div>
         </div>
