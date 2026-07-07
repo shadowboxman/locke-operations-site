@@ -1256,7 +1256,17 @@
 
 <script>
   // === Config ===
-  const API_BASE_URL = 'https://locke-operations-site-production.up.railway.app';
+  // API base by hostname: production domains hit the prod API; everything else
+  // (staging domain, Vercel previews, local files) hits the staging service.
+  // Override with window.LOCKE_API_ENDPOINT for local development.
+  // TODO: swap STAGING_API to https://api-staging.lockeoperations.com once the
+  // Railway staging environment has its custom domain.
+  const LOCKE_PROD_HOSTS = ['lockeoperations.com', 'www.lockeoperations.com', 'portal.lockeoperations.com'];
+  const API_BASE_URL = window.LOCKE_API_ENDPOINT || (
+    LOCKE_PROD_HOSTS.indexOf(location.hostname) !== -1
+      ? 'https://api.lockeoperations.com'
+      : 'https://locke-operations-site-production.up.railway.app'
+  );
 
   // Small authed fetch helper. Throws "status: body" on non-2xx.
   async function apiJson(method, path, body) {

@@ -543,7 +543,16 @@
    endpoint at runtime by setting window.LOCKE_API_ENDPOINT before this script
    runs, e.g. via a <script>window.LOCKE_API_ENDPOINT='http://localhost:8000'<\/script>
    tag earlier in the page. */
-const LOCKE_API_ENDPOINT = (window.LOCKE_API_ENDPOINT || 'https://api.lockeoperations.com') + '/api/submit';
+// API base by hostname: prod domains → prod API; staging/previews/local → staging.
+// Override with window.LOCKE_API_ENDPOINT. TODO: swap staging fallback to
+// https://api-staging.lockeoperations.com once that domain exists.
+const LOCKE_PROD_HOSTS = ['lockeoperations.com', 'www.lockeoperations.com', 'portal.lockeoperations.com'];
+const LOCKE_API_BASE = window.LOCKE_API_ENDPOINT || (
+  LOCKE_PROD_HOSTS.indexOf(location.hostname) !== -1
+    ? 'https://api.lockeoperations.com'
+    : 'https://locke-operations-site-production.up.railway.app'
+);
+const LOCKE_API_ENDPOINT = LOCKE_API_BASE + '/api/submit';
 
 function buildLockePayload(contact, a) {
   return {

@@ -706,7 +706,15 @@
   // ===============================================================
   // Config
   // ===============================================================
-  const API_BASE_URL = 'https://locke-operations-site-production.up.railway.app';
+  // API base by hostname; see portal.html for the pattern. Override with
+  // window.LOCKE_API_ENDPOINT locally. TODO: swap the staging fallback to
+  // https://api-staging.lockeoperations.com once that domain exists.
+  const LOCKE_PROD_HOSTS = ['lockeoperations.com', 'www.lockeoperations.com', 'portal.lockeoperations.com'];
+  const API_BASE_URL = window.LOCKE_API_ENDPOINT || (
+    LOCKE_PROD_HOSTS.indexOf(location.hostname) !== -1
+      ? 'https://api.lockeoperations.com'
+      : 'https://locke-operations-site-production.up.railway.app'
+  );
 
   let lockeUser = null;
   let isFullAdmin = false;   // true locke_admin (not just locke_staff)

@@ -10,7 +10,7 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Locke Operations · We handle the work your software won't">
 <meta property="og:description" content="We handle the work your software won't. Done-for-you automation for admin-heavy small and mid-size businesses. We build it. We run it.">
-<meta property="og:url" content="https://shadowboxman.github.io/locke-operations-site/">
+<meta property="og:url" content="https://www.lockeoperations.com/">
 
 <!-- Twitter -->
 <meta name="twitter:card" content="summary">
@@ -1222,7 +1222,14 @@
   // Contact form → POST /api/contact. Same endpoint-base convention as the
   // assessment: override with window.LOCKE_API_ENDPOINT for local/staging.
   (function () {
-    var API_BASE = (window.LOCKE_API_ENDPOINT || 'https://api.lockeoperations.com');
+    // API base by hostname; see assessment.html for the pattern. TODO: swap the
+    // staging fallback to https://api-staging.lockeoperations.com once it exists.
+    var LOCKE_PROD_HOSTS = ['lockeoperations.com', 'www.lockeoperations.com', 'portal.lockeoperations.com'];
+    var API_BASE = window.LOCKE_API_ENDPOINT || (
+      LOCKE_PROD_HOSTS.indexOf(location.hostname) !== -1
+        ? 'https://api.lockeoperations.com'
+        : 'https://locke-operations-site-production.up.railway.app'
+    );
 
     // Cloudflare Turnstile. Paste the SITE key (public, safe to embed) below to
     // turn on the bot challenge; leave empty and no widget renders. The matching
