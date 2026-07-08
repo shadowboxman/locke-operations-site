@@ -544,13 +544,12 @@
    runs, e.g. via a <script>window.LOCKE_API_ENDPOINT='http://localhost:8000'<\/script>
    tag earlier in the page. */
 // API base by hostname: prod domains → prod API; staging/previews/local → staging.
-// Override with window.LOCKE_API_ENDPOINT. TODO: swap staging fallback to
-// https://api-staging.lockeoperations.com once that domain exists.
+// Override with window.LOCKE_API_ENDPOINT.
 const LOCKE_PROD_HOSTS = ['lockeoperations.com', 'www.lockeoperations.com', 'portal.lockeoperations.com'];
 const LOCKE_API_BASE = window.LOCKE_API_ENDPOINT || (
   LOCKE_PROD_HOSTS.indexOf(location.hostname) !== -1
     ? 'https://api.lockeoperations.com'
-    : 'https://locke-operations-site-production.up.railway.app'
+    : 'https://api-staging.lockeoperations.com'
 );
 const LOCKE_API_ENDPOINT = LOCKE_API_BASE + '/api/submit';
 
