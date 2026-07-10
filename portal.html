@@ -759,13 +759,23 @@
 </style>
 
 <!-- Clerk JS SDK (Phase 1: vanilla JS, no bundler) -->
-<script
-  async
-  crossorigin="anonymous"
-  data-clerk-publishable-key="pk_test_bGl2aW5nLWNvbHQtNTguY2xlcmsuYWNjb3VudHMuZGV2JA"
-  src="https://living-colt-58.clerk.accounts.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
-  type="text/javascript"
-></script>
+<script>
+  // Clerk instance by hostname; see login.html for the pattern.
+  (function () {
+    var PROD_HOSTS = ['lockeoperations.com', 'www.lockeoperations.com', 'portal.lockeoperations.com'];
+    var isProd = PROD_HOSTS.indexOf(location.hostname) !== -1;
+    var s = document.createElement('script');
+    s.async = true;
+    s.crossOrigin = 'anonymous';
+    s.setAttribute('data-clerk-publishable-key', isProd
+      ? 'pk_live_Y2xlcmsubG9ja2VvcGVyYXRpb25zLmNvbSQ'
+      : 'pk_test_bGl2aW5nLWNvbHQtNTguY2xlcmsuYWNjb3VudHMuZGV2JA');
+    s.src = (isProd ? 'https://clerk.lockeoperations.com' : 'https://living-colt-58.clerk.accounts.dev')
+      + '/npm/@clerk/clerk-js@5/dist/clerk.browser.js';
+    s.type = 'text/javascript';
+    document.head.appendChild(s);
+  })();
+</script>
 </head>
 <body>
 
@@ -1259,13 +1269,11 @@
   // API base by hostname: production domains hit the prod API; everything else
   // (staging domain, Vercel previews, local files) hits the staging service.
   // Override with window.LOCKE_API_ENDPOINT for local development.
-  // TODO: swap STAGING_API to https://api-staging.lockeoperations.com once the
-  // Railway staging environment has its custom domain.
   const LOCKE_PROD_HOSTS = ['lockeoperations.com', 'www.lockeoperations.com', 'portal.lockeoperations.com'];
   const API_BASE_URL = window.LOCKE_API_ENDPOINT || (
     LOCKE_PROD_HOSTS.indexOf(location.hostname) !== -1
       ? 'https://api.lockeoperations.com'
-      : 'https://locke-operations-site-production.up.railway.app'
+      : 'https://api-staging.lockeoperations.com'
   );
 
   // Small authed fetch helper. Throws "status: body" on non-2xx.

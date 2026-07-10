@@ -19,8 +19,14 @@ log = logging.getLogger(__name__)
 
 HUBSPOT_PORTAL_ID = os.environ["HUBSPOT_PORTAL_ID"].strip().strip('"').strip("'")
 HUBSPOT_FORM_ID = os.environ["HUBSPOT_FORM_ID"].strip().strip('"').strip("'")
+# Forms API host. Default works for the original NA region; na2 portals may
+# require api-na2.hsforms.com — set HUBSPOT_API_HOST per environment instead
+# of editing code at cutover.
+HUBSPOT_API_HOST = (
+    os.environ.get("HUBSPOT_API_HOST", "api.hsforms.com").strip().strip('"').strip("'")
+)
 HUBSPOT_ENDPOINT = (
-    f"https://api.hsforms.com/submissions/v3/integration/submit/"
+    f"https://{HUBSPOT_API_HOST}/submissions/v3/integration/submit/"
     f"{HUBSPOT_PORTAL_ID}/{HUBSPOT_FORM_ID}"
 )
 
@@ -32,7 +38,7 @@ HUBSPOT_CONTACT_FORM_ID = (
     os.environ.get("HUBSPOT_CONTACT_FORM_ID", "").strip().strip('"').strip("'")
 )
 HUBSPOT_CONTACT_ENDPOINT = (
-    f"https://api.hsforms.com/submissions/v3/integration/submit/"
+    f"https://{HUBSPOT_API_HOST}/submissions/v3/integration/submit/"
     f"{HUBSPOT_PORTAL_ID}/{HUBSPOT_CONTACT_FORM_ID}"
     if HUBSPOT_CONTACT_FORM_ID else ""
 )
