@@ -45,6 +45,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 import hubspot_client
+import hubspot_crm
 import r2
 from esign import EnvelopeStatus, Signer, get_provider
 from clerk import (
@@ -85,15 +86,38 @@ ALLOWED_ORIGIN_REGEX = os.environ.get(
     r"^https://locke-operations-site(-[a-z0-9-]+)?\.vercel\.app$",
 )
 
+async def _nightly_snapshot_loop():
+    """Refresh the read-only HubSpot contacts snapshot daily at 09:00 UTC.
+    The snapshot exists only as a fallback for the admin contacts view when
+    the HubSpot API is unreachable. Failures are logged, never fatal."""
+    import asyncio
+    from datetime import datetime, timedelta, timezone
+    while True:
+        now = datetime.now(timezone.utc)
+        target = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        if target <= now:
+            target += timedelta(days=1)
+        await asyncio.sleep((target - now).total_seconds())
+        try:
+            await hubspot_crm.run_snapshot()
+        except Exception as exc:  # noqa: BLE001 — loop must survive anything
+            log.warning("snapshot.nightly_failed err=%s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Portal endpoints need a Postgres pool. Assessment-only deployments
     # can run without DATABASE_URL; init_pool will raise loudly if missing.
+    import asyncio
+    snapshot_task = None
     if os.environ.get("DATABASE_URL"):
         await init_pool()
+        snapshot_task = asyncio.create_task(_nightly_snapshot_loop())
     else:
         log.warning("startup.no_database_url portal endpoints will 500")
     yield
+    if snapshot_task:
+        snapshot_task.cancel()
     await close_pool()
 
 
@@ -2920,3 +2944,113 @@ async def esign_webhook(request: Request):
         log.exception("esign.webhook.handler_failed external_id=%s err=%s", event.external_id, exc)
 
     return {"ok": True}
+
+
+# ===============================================================
+# Admin: HubSpot contacts proxy (see hubspot_crm.py for design)
+# ===============================================================
+# HubSpot is the only contact store. These endpoints proxy the CRM API
+# live; the Postgres snapshot serves reads only when HubSpot is down.
+
+class ContactWriteRequest(BaseModel):
+    properties: dict[str, str | None] = Field(default_factory=dict)
+
+
+def _hubspot_http_errors(exc: Exception) -> HTTPException:
+    if isinstance(exc, hubspot_crm.HubSpotNotConfigured):
+        return HTTPException(status_code=503, detail="HUBSPOT_PRIVATE_APP_TOKEN is not configured for this environment.")
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=400, detail=str(exc))
+    if isinstance(exc, KeyError):
+        return HTTPException(status_code=404, detail="Contact not found")
+    return HTTPException(status_code=502, detail="HubSpot API unavailable")
+
+
+@app.get("/api/admin/contacts")
+async def admin_list_contacts(
+    q: str | None = None,
+    stage: str | None = None,
+    after: str | None = None,
+    limit: int = 50,
+    admin: dict = Depends(require_locke_admin),
+):
+    try:
+        return await hubspot_crm.list_contacts(q=q, stage=stage, after=after, limit=limit)
+    except hubspot_crm.HubSpotUnavailable:
+        # Read-only fallback. Filtering is client-side in this mode.
+        log.warning("contacts.fallback_to_snapshot")
+        return await hubspot_crm.snapshot_fallback()
+    except Exception as exc:
+        raise _hubspot_http_errors(exc)
+
+
+@app.get("/api/admin/contacts/funnel")
+async def admin_contacts_funnel(admin: dict = Depends(require_locke_admin)):
+    try:
+        return await hubspot_crm.funnel()
+    except Exception as exc:
+        raise _hubspot_http_errors(exc)
+
+
+@app.get("/api/admin/contacts/stages")
+async def admin_contact_stages(admin: dict = Depends(require_locke_admin)):
+    return {"stages": [{"key": k, "label": v} for k, v in hubspot_crm.STAGES]}
+
+
+@app.post("/api/admin/contacts")
+async def admin_create_contact(
+    payload: ContactWriteRequest,
+    admin: dict = Depends(require_locke_admin),
+):
+    try:
+        contact = await hubspot_crm.create_contact(payload.properties)
+    except Exception as exc:
+        raise _hubspot_http_errors(exc)
+    await _audit(
+        actor_user_id=admin["id"], action="contact.created",
+        resource_type="contact", metadata={"hubspot_id": contact["id"], "email": contact.get("email")},
+    )
+    return contact
+
+
+@app.patch("/api/admin/contacts/{contact_id}")
+async def admin_update_contact(
+    contact_id: str,
+    payload: ContactWriteRequest,
+    admin: dict = Depends(require_locke_admin),
+):
+    try:
+        contact = await hubspot_crm.update_contact(contact_id, payload.properties)
+    except Exception as exc:
+        raise _hubspot_http_errors(exc)
+    await _audit(
+        actor_user_id=admin["id"], action="contact.updated",
+        resource_type="contact",
+        metadata={"hubspot_id": contact_id, "fields": sorted(payload.properties)},
+    )
+    return contact
+
+
+@app.delete("/api/admin/contacts/{contact_id}")
+async def admin_archive_contact(
+    contact_id: str,
+    admin: dict = Depends(require_locke_admin),
+):
+    try:
+        await hubspot_crm.archive_contact(contact_id)
+    except Exception as exc:
+        raise _hubspot_http_errors(exc)
+    await _audit(
+        actor_user_id=admin["id"], action="contact.archived",
+        resource_type="contact", metadata={"hubspot_id": contact_id},
+    )
+    return {"ok": True}
+
+
+@app.post("/api/admin/contacts/snapshot")
+async def admin_refresh_snapshot(admin: dict = Depends(require_locke_admin)):
+    """Manual snapshot refresh (also runs nightly at 09:00 UTC)."""
+    try:
+        return await hubspot_crm.run_snapshot()
+    except Exception as exc:
+        raise _hubspot_http_errors(exc)

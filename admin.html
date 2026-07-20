@@ -564,6 +564,29 @@
     h1 { font-size: 22px; }
     .modal-title { font-size: 15px; }
   }
+
+  /* CONTACTS + FUNNEL */
+  .funnel { border: 1px solid var(--hairline-strong, rgba(26,35,50,0.22)); background: #fff; padding: 20px 22px; margin-bottom: 22px; }
+  .funnel-title { font-family: 'IBM Plex Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--concrete); margin-bottom: 14px; }
+  .funnel-row { display: grid; grid-template-columns: 90px 1fr 130px; gap: 12px; align-items: center; padding: 5px 0; }
+  .funnel-label { font-size: 13px; color: var(--navy); }
+  .funnel-track { background: rgba(26,35,50,0.06); height: 18px; position: relative; }
+  .funnel-bar { background: var(--navy); height: 100%; min-width: 2px; transition: width 0.3s ease; }
+  .funnel-bar.stage-lost { background: var(--concrete); }
+  .funnel-count { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--navy); text-align: right; white-space: nowrap; }
+  .funnel-splits { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(26,35,50,0.10); }
+  .funnel-chip { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--concrete); }
+  .funnel-chip b { color: var(--navy); font-weight: 600; }
+  .contacts-toolbar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .contacts-toolbar input, .contacts-toolbar select {
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; color: var(--navy);
+    background: #fff; border: 1px solid rgba(26,35,50,0.22); padding: 8px 11px; border-radius: 0;
+  }
+  .contacts-toolbar input { flex: 1; min-width: 200px; }
+  .snapshot-banner { background: rgba(242,90,26,0.10); border: 1px solid var(--oxide); color: var(--navy); font-size: 13px; padding: 10px 14px; margin-bottom: 14px; display: none; }
+  .stage-pill { font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; padding: 3px 8px; background: rgba(26,35,50,0.08); color: var(--navy); }
+  .stage-pill.s-lost { background: rgba(168,166,160,0.25); color: var(--concrete); }
+  .stage-pill.s-run { background: var(--navy); color: var(--bone, #F4F1EA); }
 </style>
 
 <script>
@@ -628,6 +651,7 @@
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
           <div class="page-meta"><span id="orgsCount">0</span> total</div>
+          <button class="btn-secondary" id="btnContacts">Contacts</button>
           <button class="btn-secondary" id="btnManageStaff" style="display:none;">Locke staff</button>
           <button class="btn-primary" id="btnCreateOrg">Create org</button>
         </div>
@@ -653,7 +677,137 @@
       <div class="section-row"><div class="section-title">Pending invitations</div></div>
       <div id="staffPendingContainer"></div>
     </section>
+
+    <!-- VIEW: CONTACTS (HubSpot proxy — HubSpot is the source of truth) -->
+    <section class="view" id="view-contacts">
+      <button class="breadcrumb" onclick="showView('orgs')">← All organizations</button>
+      <div class="page-header">
+        <div>
+          <div class="page-eyebrow">Admin</div>
+          <h1>Contacts</h1>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <div class="page-meta"><span id="contactsCount">0</span> total</div>
+          <button class="btn-primary" id="btnCreateContact">New contact</button>
+        </div>
+      </div>
+
+      <div class="snapshot-banner" id="snapshotBanner"></div>
+
+      <div class="funnel" id="funnelContainer" style="display:none;">
+        <div class="funnel-title">Pipeline</div>
+        <div id="funnelRows"></div>
+        <div class="funnel-splits" id="funnelSplits"></div>
+      </div>
+
+      <div class="contacts-toolbar">
+        <input type="text" id="contactSearch" placeholder="Search name, email, company...">
+        <select id="contactStageFilter"><option value="">All stages</option></select>
+      </div>
+
+      <div id="contactsTableContainer"></div>
+      <div style="margin-top:14px; text-align:center;">
+        <button class="btn-secondary" id="btnMoreContacts" style="display:none;">Load more</button>
+      </div>
+    </section>
   </main>
+
+  <!-- MODAL: CONTACT CREATE/EDIT -->
+  <div class="modal-backdrop" id="modalContact">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="contactModalTitle">Contact</div>
+        <button class="modal-close" onclick="closeModal('modalContact')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="formContact">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-field">
+              <label class="form-label" for="cFirst">First name</label>
+              <input class="form-input" type="text" id="cFirst" maxlength="80">
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="cLast">Last name</label>
+              <input class="form-input" type="text" id="cLast" maxlength="80">
+            </div>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="cEmail">Email <span class="req">*</span></label>
+            <input class="form-input" type="email" id="cEmail" required maxlength="200">
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-field">
+              <label class="form-label" for="cCompany">Company</label>
+              <input class="form-input" type="text" id="cCompany" maxlength="120">
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="cPhone">Phone</label>
+              <input class="form-input" type="text" id="cPhone" maxlength="40">
+            </div>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="cStage">Stage</label>
+            <select class="form-input" id="cStage"></select>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="cNotes">Notes</label>
+            <textarea class="form-input" id="cNotes" rows="3" maxlength="5000"></textarea>
+          </div>
+          <div id="contactAssessmentInfo" style="display:none; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--concrete); border-top:1px solid rgba(26,35,50,0.10); padding-top:10px; margin-top:4px; line-height:1.7;"></div>
+        </form>
+      </div>
+      <div class="modal-footer" style="justify-content:space-between;">
+        <div>
+          <button class="btn-secondary" id="btnArchiveContact" style="display:none; color:var(--oxide);">Archive</button>
+          <button class="btn-secondary" id="btnPromoteContact" style="display:none;">Promote to client…</button>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn-secondary" onclick="closeModal('modalContact')">Cancel</button>
+          <button class="btn-primary" id="btnSaveContact">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PROMOTE TO CLIENT -->
+  <div class="modal-backdrop" id="modalPromote">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Promote to client</div>
+        <button class="modal-close" onclick="closeModal('modalPromote')">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px; color:var(--concrete); margin-bottom:14px;">
+          Creates the client organization, sends a Clerk portal invitation to
+          <strong id="promoteEmail" style="color:var(--navy);"></strong>, and updates the
+          contact's stage in HubSpot. One click, three systems.
+        </p>
+        <form id="formPromote">
+          <div class="form-field">
+            <label class="form-label" for="pOrgName">Organization name <span class="req">*</span></label>
+            <input class="form-input" type="text" id="pOrgName" required maxlength="120">
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="pOrgSlug">Slug <span class="req">*</span></label>
+            <input class="form-input" type="text" id="pOrgSlug" required maxlength="60" pattern="^[a-z0-9-]+$">
+            <div class="form-help">Lowercase letters, numbers, hyphens.</div>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="pStage">Stage after promotion</label>
+            <select class="form-input" id="pStage">
+              <option value="fit_call">Fit call</option>
+              <option value="audit" selected>Audit</option>
+              <option value="build">Build</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalPromote')">Cancel</button>
+        <button class="btn-primary" id="btnSubmitPromote">Create org + invite</button>
+      </div>
+    </div>
+  </div>
 
   <!-- MODAL: CREATE ORG -->
   <div class="modal-backdrop" id="modalCreateOrg">
@@ -1209,6 +1363,269 @@
   document.getElementById('logoutBtn').addEventListener('click', async () => {
     if (window.Clerk && Clerk.loaded) await Clerk.signOut();
     window.location.href = 'index.html';
+  });
+
+  // ===============================================================
+  // CONTACTS (HubSpot proxy). HubSpot is the source of truth; the
+  // snapshot banner appears only when serving the Postgres fallback.
+  // ===============================================================
+  let contactStages = [];          // [{key,label}]
+  let contactsCache = {};          // id -> contact
+  let contactsAfter = null;        // pagination cursor
+  let contactsFilters = { q: '', stage: '' };
+  let editingContactId = null;     // null = create mode
+  let contactsLoaded = false;
+
+  document.getElementById('btnContacts').addEventListener('click', async () => {
+    showView('contacts');
+    if (!contactsLoaded) {
+      contactsLoaded = true;
+      await initContacts();
+    }
+  });
+
+  async function initContacts() {
+    try {
+      const { stages } = await apiGet('/api/admin/contacts/stages');
+      contactStages = stages;
+      const filterSel = document.getElementById('contactStageFilter');
+      const modalSel = document.getElementById('cStage');
+      for (const s of stages) {
+        filterSel.insertAdjacentHTML('beforeend', `<option value="${s.key}">${escapeHtml(s.label)}</option>`);
+        modalSel.insertAdjacentHTML('beforeend', `<option value="${s.key}">${escapeHtml(s.label)}</option>`);
+      }
+    } catch (err) {
+      flash('Stages unavailable: ' + err.message, 'error');
+    }
+    await Promise.all([loadContacts(true), loadFunnel()]);
+  }
+
+  function stageLabel(key) {
+    const s = contactStages.find(x => x.key === key);
+    return s ? s.label : (key || '—');
+  }
+  function fmtMoney0(n) {
+    const v = Number(n);
+    if (!v) return '';
+    return '$' + Math.round(v).toLocaleString('en-US');
+  }
+
+  async function loadContacts(reset) {
+    const container = document.getElementById('contactsTableContainer');
+    if (reset) {
+      contactsAfter = null;
+      contactsCache = {};
+      container.innerHTML = '<div class="loading">Loading contacts...</div>';
+    }
+    try {
+      const params = new URLSearchParams({ limit: '50' });
+      if (contactsFilters.q) params.set('q', contactsFilters.q);
+      if (contactsFilters.stage) params.set('stage', contactsFilters.stage);
+      if (contactsAfter) params.set('after', contactsAfter);
+      const data = await apiGet('/api/admin/contacts?' + params.toString());
+
+      let results = data.results;
+      const banner = document.getElementById('snapshotBanner');
+      if (data.source === 'snapshot') {
+        banner.style.display = 'block';
+        banner.textContent = 'HubSpot is unreachable. Showing read-only snapshot from ' +
+          (data.snapshot_at ? new Date(data.snapshot_at).toLocaleString() : 'unknown time') +
+          '. Editing is disabled until HubSpot recovers.';
+        // Snapshot mode: filter client-side, no paging.
+        const q = contactsFilters.q.toLowerCase();
+        results = results.filter(c =>
+          (!contactsFilters.stage || c.locke_stage === contactsFilters.stage) &&
+          (!q || [c.email, c.firstname, c.lastname, c.company].join(' ').toLowerCase().includes(q)));
+        contactsAfter = null;
+      } else {
+        banner.style.display = 'none';
+        contactsAfter = data.after || null;
+      }
+
+      for (const c of results) contactsCache[c.id] = c;
+      document.getElementById('contactsCount').textContent =
+        data.total ?? Object.keys(contactsCache).length;
+      renderContactsTable(reset ? results : Object.values(contactsCache), data.source);
+      document.getElementById('btnMoreContacts').style.display = contactsAfter ? '' : 'none';
+    } catch (err) {
+      container.innerHTML = `<div class="empty"><div class="empty-title">Contacts unavailable</div><div class="empty-sub">${escapeHtml(err.message)}</div></div>`;
+    }
+  }
+
+  function renderContactsTable(contacts, source) {
+    const container = document.getElementById('contactsTableContainer');
+    if (!contacts.length) {
+      container.innerHTML = `<div class="empty"><div class="empty-title">No contacts</div><div class="empty-sub">Assessment and contact-form leads appear here automatically.</div></div>`;
+      return;
+    }
+    const editable = source !== 'snapshot';
+    container.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr><th>Name</th><th>Company</th><th>Stage</th><th>Industry</th><th>Readiness</th><th>Est. value</th><th>Created</th></tr>
+        </thead>
+        <tbody>
+          ${contacts.map(c => `
+            <tr style="cursor:${editable ? 'pointer' : 'default'};" ${editable ? `onclick="openContactModal('${c.id}')"` : ''}>
+              <td>
+                ${escapeHtml([c.firstname, c.lastname].filter(Boolean).join(' ') || '—')}
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--concrete);">${escapeHtml(c.email || '')}</div>
+              </td>
+              <td>${escapeHtml(c.company || '—')}</td>
+              <td><span class="stage-pill s-${escapeHtml(c.locke_stage || 'none')}">${escapeHtml(stageLabel(c.locke_stage))}</span></td>
+              <td style="font-size:13px;">${escapeHtml(c.assessment_industry || '—')}</td>
+              <td style="font-size:13px;">${escapeHtml(c.assessment_readiness_band || '—')}</td>
+              <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;">${fmtMoney0(c.assessment_annual_midpoint) || '—'}</td>
+              <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${fmtDate(c.createdate)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  async function loadFunnel() {
+    try {
+      const f = await apiGet('/api/admin/contacts/funnel');
+      const maxCount = Math.max(1, ...f.stages.map(s => s.count));
+      document.getElementById('funnelRows').innerHTML = f.stages.map(s => `
+        <div class="funnel-row">
+          <div class="funnel-label">${escapeHtml(s.label)}</div>
+          <div class="funnel-track"><div class="funnel-bar stage-${s.key}" style="width:${(s.count / maxCount) * 100}%"></div></div>
+          <div class="funnel-count">${s.count}${s.pipeline_value ? ' · ' + fmtMoney0(s.pipeline_value) : ''}</div>
+        </div>`).join('');
+      const chips = [];
+      if (f.unstaged) chips.push(`<span class="funnel-chip">Unstaged <b>${f.unstaged}</b></span>`);
+      for (const [band, n] of Object.entries(f.readiness_bands))
+        chips.push(`<span class="funnel-chip">${escapeHtml(band)} readiness <b>${n}</b></span>`);
+      for (const [ind, n] of Object.entries(f.industries))
+        chips.push(`<span class="funnel-chip">${escapeHtml(ind)} <b>${n}</b></span>`);
+      document.getElementById('funnelSplits').innerHTML = chips.join('');
+      document.getElementById('funnelContainer').style.display = '';
+    } catch (err) {
+      document.getElementById('funnelContainer').style.display = 'none';
+    }
+  }
+
+  // Search (debounced) + stage filter + paging
+  let contactSearchTimer = null;
+  document.getElementById('contactSearch').addEventListener('input', (e) => {
+    clearTimeout(contactSearchTimer);
+    contactSearchTimer = setTimeout(() => {
+      contactsFilters.q = e.target.value.trim();
+      loadContacts(true);
+    }, 350);
+  });
+  document.getElementById('contactStageFilter').addEventListener('change', (e) => {
+    contactsFilters.stage = e.target.value;
+    loadContacts(true);
+  });
+  document.getElementById('btnMoreContacts').addEventListener('click', () => loadContacts(false));
+
+  // --- Create / edit modal ---
+  document.getElementById('btnCreateContact').addEventListener('click', () => openContactModal(null));
+
+  window.openContactModal = function (id) {
+    editingContactId = id;
+    const c = id ? contactsCache[id] : {};
+    document.getElementById('contactModalTitle').textContent = id ? 'Edit contact' : 'New contact';
+    document.getElementById('cFirst').value = c.firstname || '';
+    document.getElementById('cLast').value = c.lastname || '';
+    document.getElementById('cEmail').value = c.email || '';
+    document.getElementById('cCompany').value = c.company || '';
+    document.getElementById('cPhone').value = c.phone || '';
+    document.getElementById('cStage').value = c.locke_stage || 'lead';
+    document.getElementById('cNotes').value = c.locke_notes || '';
+    const info = document.getElementById('contactAssessmentInfo');
+    if (id && (c.assessment_readiness_band || c.assessment_annual_midpoint)) {
+      info.style.display = 'block';
+      info.innerHTML = 'ASSESSMENT (read-only) · ' + [
+        c.assessment_industry, c.assessment_readiness_band ? c.assessment_readiness_band + ' readiness' : null,
+        c.assessment_readiness_score ? 'score ' + c.assessment_readiness_score : null,
+        fmtMoney0(c.assessment_annual_midpoint) ? fmtMoney0(c.assessment_annual_midpoint) + '/yr est.' : null,
+      ].filter(Boolean).map(escapeHtml).join(' · ');
+    } else {
+      info.style.display = 'none';
+    }
+    document.getElementById('btnArchiveContact').style.display = id ? '' : 'none';
+    document.getElementById('btnPromoteContact').style.display = (id && c.email) ? '' : 'none';
+    openModal('modalContact');
+  };
+
+  document.getElementById('btnSaveContact').addEventListener('click', async () => {
+    const properties = {
+      firstname: document.getElementById('cFirst').value.trim(),
+      lastname: document.getElementById('cLast').value.trim(),
+      email: document.getElementById('cEmail').value.trim(),
+      company: document.getElementById('cCompany').value.trim(),
+      phone: document.getElementById('cPhone').value.trim(),
+      locke_stage: document.getElementById('cStage').value,
+      locke_notes: document.getElementById('cNotes').value.trim(),
+    };
+    if (!properties.email) { flash('Email is required.', 'error'); return; }
+    try {
+      if (editingContactId) {
+        await apiPatch(`/api/admin/contacts/${editingContactId}`, { properties });
+        flash('Contact updated.');
+      } else {
+        await apiPost('/api/admin/contacts', { properties });
+        flash('Contact created.');
+      }
+      closeModal('modalContact');
+      await Promise.all([loadContacts(true), loadFunnel()]);
+    } catch (err) {
+      flash('Save failed: ' + err.message, 'error');
+    }
+  });
+
+  document.getElementById('btnArchiveContact').addEventListener('click', async () => {
+    const c = contactsCache[editingContactId] || {};
+    if (!confirm(`Archive ${c.email || 'this contact'} in HubSpot? It moves to HubSpot's recycle bin (restorable there for 90 days).`)) return;
+    try {
+      await apiDelete(`/api/admin/contacts/${editingContactId}`);
+      flash('Contact archived.');
+      closeModal('modalContact');
+      await Promise.all([loadContacts(true), loadFunnel()]);
+    } catch (err) {
+      flash('Archive failed: ' + err.message, 'error');
+    }
+  });
+
+  // --- Promote to client: org + Clerk invite + HubSpot stage, one flow ---
+  document.getElementById('btnPromoteContact').addEventListener('click', () => {
+    const c = contactsCache[editingContactId];
+    if (!c) return;
+    document.getElementById('promoteEmail').textContent = c.email;
+    document.getElementById('pOrgName').value = c.company || '';
+    document.getElementById('pOrgSlug').value = slugify(c.company || '');
+    closeModal('modalContact');
+    openModal('modalPromote');
+  });
+  document.getElementById('pOrgName').addEventListener('input', (e) => {
+    document.getElementById('pOrgSlug').value = slugify(e.target.value);
+  });
+
+  document.getElementById('btnSubmitPromote').addEventListener('click', async () => {
+    const c = contactsCache[editingContactId];
+    const name = document.getElementById('pOrgName').value.trim();
+    const slug = document.getElementById('pOrgSlug').value.trim();
+    const stage = document.getElementById('pStage').value;
+    if (!c || !name || !slug) { flash('Organization name and slug are required.', 'error'); return; }
+    const btn = document.getElementById('btnSubmitPromote');
+    btn.disabled = true; btn.textContent = 'Working...';
+    let step = 'creating the organization';
+    try {
+      const org = await apiPost('/api/admin/orgs', { name, slug });
+      step = 'sending the invitation';
+      await apiPost(`/api/admin/orgs/${org.id}/invitations`, { email: c.email, role: 'client_admin' });
+      step = 'updating the HubSpot stage';
+      await apiPatch(`/api/admin/contacts/${c.id}`, { properties: { locke_stage: stage } });
+      flash(`Promoted: org "${name}" created, ${c.email} invited, stage set to ${stageLabel(stage)}.`);
+      closeModal('modalPromote');
+      await Promise.all([loadContacts(true), loadFunnel(), loadOrgs()]);
+    } catch (err) {
+      flash(`Promotion failed while ${step}: ${err.message}. Completed steps were NOT rolled back — check the orgs list and HubSpot before retrying.`, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Create org + invite';
+    }
   });
 
   // ===============================================================

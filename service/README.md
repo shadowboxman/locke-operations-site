@@ -65,7 +65,8 @@ See [.env.example](.env.example). All required vars must be set in Railway befor
 
 - `main.py` — FastAPI app and `/api/submit` endpoint.
 - `pdf_generator.py` — WeasyPrint PDF generation. Math + template substitution.
-- `hubspot_client.py` — HubSpot Forms API submission.
+- `hubspot_client.py` — HubSpot Forms API submission (assessment + contact form intake).
+- `hubspot_crm.py` — Admin contacts proxy over the HubSpot CRM v3 API. HubSpot is the ONLY contact store; Postgres holds a nightly read-only snapshot used solely as an outage fallback (design notes in the module docstring). Stage model: `locke_stage` custom property; adding a stage means updating `STAGES` there AND the property options in BOTH portals.
 - `email_client.py` — Resend send with PDF attachment.
 - `assessment-result-template.html` — HTML template that becomes the PDF. **The only copy** as of 2026-07-06: the duplicate in `/Marketing/brand/templates/` was deleted and the manual-send script (`generate-assessment-pdf.py`, Playbook 06) now reads this file. Edit it here; nothing else to sync.
 - `Dockerfile` — Production image; installs Pango/Cairo + DejaVu fonts.
