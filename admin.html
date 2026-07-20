@@ -587,6 +587,12 @@
   .stage-pill { font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; padding: 3px 8px; background: rgba(26,35,50,0.08); color: var(--navy); }
   .stage-pill.s-lost { background: rgba(168,166,160,0.25); color: var(--concrete); }
   .stage-pill.s-run { background: var(--navy); color: var(--bone, #F4F1EA); }
+
+  /* Modal footer with left/right button groups (contact modal) */
+  .modal-footer.split { justify-content: space-between; flex-wrap: wrap; row-gap: 10px; }
+  .btn-group { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn-ico { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .btn-ico svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 </style>
 
 <script>
@@ -756,14 +762,26 @@
           <div id="contactAssessmentInfo" style="display:none; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--concrete); border-top:1px solid rgba(26,35,50,0.10); padding-top:10px; margin-top:4px; line-height:1.7;"></div>
         </form>
       </div>
-      <div class="modal-footer" style="justify-content:space-between;">
-        <div>
-          <button class="btn-secondary" id="btnArchiveContact" style="display:none; color:var(--oxide);">Archive</button>
-          <button class="btn-secondary" id="btnPromoteContact" style="display:none;">Promote to client…</button>
+      <div class="modal-footer split">
+        <div class="btn-group">
+          <button class="btn-secondary btn-ico" id="btnArchiveContact" style="display:none; color:var(--oxide);">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+            Archive
+          </button>
+          <button class="btn-secondary btn-ico" id="btnPromoteContact" style="display:none;">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+            Promote to client
+          </button>
         </div>
-        <div style="display:flex; gap:10px;">
-          <button class="btn-secondary" onclick="closeModal('modalContact')">Cancel</button>
-          <button class="btn-primary" id="btnSaveContact">Save</button>
+        <div class="btn-group">
+          <button class="btn-secondary btn-ico" onclick="closeModal('modalContact')">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Cancel
+          </button>
+          <button class="btn-primary btn-ico" id="btnSaveContact">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            Save
+          </button>
         </div>
       </div>
     </div>
