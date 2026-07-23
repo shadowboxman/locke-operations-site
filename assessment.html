@@ -528,6 +528,70 @@
     border-color: var(--bg) !important;
     background: rgba(244, 241, 234, 0.1) !important;
   }
+
+  /* ==================================================================
+     STEEL DARK — layered last so it wins. Redefines the palette for the
+     dark monochrome + oxide system and fixes the spots that were
+     hardcoded light or where a token did double duty (text vs surface).
+     ================================================================== */
+  :root {
+    --bg: #101014;
+    --card: #191920;
+    --ink: #f5f5f5;
+    --ink-2: #aab5c2;
+    --muted: #8a97a8;
+    --accent: #f25a1a;
+    --accent-2: #ff6a2a;
+    --accent-soft: rgba(242, 90, 26, 0.14);
+    --border: rgba(245, 245, 245, 0.10);
+    --border-strong: rgba(245, 245, 245, 0.20);
+    --warning: #d99a5a;
+    --danger: #e5484d;
+    --steel: #8a97a8; --steel-lt: #aab5c2; --white: #ffffff;
+    --g0: #101014; --g1: #15151a; --g2: #191920; --g3: #22222a; --g4: #2c2c34;
+  }
+  /* surfaces that were hardcoded white/light */
+  .opt, .option { background: var(--g1); color: #f5f5f5; }
+  .opt:hover, .option:hover { background: var(--g3); border-color: var(--accent); }
+  .opt.selected, .option.selected { background: var(--accent-soft) !important; border-color: var(--accent) !important; color: #f5f5f5 !important; }
+  .panel { background: var(--g2); }
+  .win-card { background: var(--g2); }
+  input:not([type=range]), textarea, select, .gate-box input { background: var(--g0); color: #f5f5f5; border-color: var(--border-strong); }
+  input:not([type=range])::placeholder, textarea::placeholder { color: var(--muted); }
+  .gate-overlay { background: rgba(16, 16, 20, 0.55); }
+  .gate-box { background: var(--g2); box-shadow: none; border: 1px solid var(--g4); }
+  .breakdown-row:last-child { border-top-color: var(--border-strong); }
+
+  /* buttons — match index.html: oxide with light text, hover to white/dark */
+  .btn-primary { background: var(--accent) !important; color: #f5f5f5 !important; }
+  .btn-primary:hover { background: #f5f5f5 !important; color: #101014 !important; }
+  .btn-ghost { background: transparent !important; color: #f5f5f5 !important; border: 1px solid var(--g4) !important; }
+  .btn-ghost:hover { background: var(--g3) !important; color: #ffffff !important; border-color: var(--steel) !important; }
+
+  /* CTA panel — dark feature panel, not the inverted light one */
+  .cta-section { background: var(--g1) !important; color: #f5f5f5 !important; border: 1px solid var(--g4) !important; }
+  .cta-section h3, .cta-section p { color: #f5f5f5 !important; }
+  .cta-section p { opacity: 0.72; }
+  .btn-light { background: #f5f5f5 !important; color: #101014 !important; }
+  .btn-light:hover { background: var(--accent) !important; color: #f5f5f5 !important; }
+  .btn-outline { background: transparent !important; color: #f5f5f5 !important; border: 1px solid var(--g4) !important; }
+  .btn-outline:hover { border-color: var(--steel) !important; background: var(--g3) !important; }
+
+  /* savings hero — Steel feature panel with an oxide keyline (its oxide moment) */
+  .hero-money { background: linear-gradient(150deg, var(--g3), var(--g2)) !important; color: #ffffff !important; box-shadow: none !important; border: 1px solid var(--g4); border-top: 2px solid var(--accent); }
+  .hero-money .label { color: var(--accent); opacity: 1; }
+  .hero-money .amount { color: #ffffff; }
+  .hero-money .subtitle { color: rgba(245, 245, 245, 0.7); }
+
+  /* holdback — dark attention panel with oxide edge */
+  .holdback { background: var(--g2); border: 1px solid var(--g4); border-left: 2px solid var(--accent); }
+  .holdback h4 { color: var(--accent); }
+  .holdback p { color: var(--ink-2); }
+
+  /* difficulty pills — semantic, adjusted for dark */
+  .diff-easy { background: rgba(70, 192, 122, 0.16); color: #6ed097; }
+  .diff-med { background: rgba(230, 180, 80, 0.16); color: #e6b450; }
+  .diff-hard { background: rgba(229, 72, 77, 0.18); color: #f0787c; }
 </style>
 </head>
 <body>
@@ -985,15 +1049,15 @@ function calculate() {
   if (readiness >= 70) {
     band = 'high';
     bandLabel = 'Ready to automate';
-    bandColor = '#059669';
+    bandColor = '#46c07a';
   } else if (readiness >= 40) {
     band = 'mid';
     bandLabel = 'High opportunity, light foundation work first';
-    bandColor = '#f59e0b';
+    bandColor = '#f0b03a';
   } else {
     band = 'low';
     bandLabel = 'Big upside, processes need standardizing first';
-    bandColor = '#ef4444';
+    bandColor = '#f0787c';
   }
 
   const tasks = a.tasks || [];
