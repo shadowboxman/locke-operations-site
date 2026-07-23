@@ -8,52 +8,52 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --navy: #1A2332;
-    --bone: #F4F1EA;
-    --concrete: #A8A6A0;
+    --navy: #16161a;
+    --bone: #ffffff;
+    --concrete: #8a97a8;
     --oxide: #F25A1A;
-    --hairline: rgba(26, 35, 50, 0.10);
+    --hairline: rgba(22, 22, 26, 0.10);
   }
 
   /* PAGE SETUP — running elements for header/footer */
   @page {
     size: letter;
     margin: 1in 0.85in 0.95in 0.85in;
-    background: #F4F1EA;
+    background: #ffffff;
     @top-left {
       content: element(brand-header);
       width: 100%;
       vertical-align: bottom;
       padding-bottom: 8pt;
-      border-bottom: 0.5pt solid rgba(26, 35, 50, 0.15);
+      border-bottom: 0.5pt solid rgba(22, 22, 26, 0.15);
     }
     @bottom-left {
       content: element(footer-left);
       vertical-align: top;
       padding-top: 8pt;
-      border-top: 0.5pt solid rgba(26, 35, 50, 0.15);
+      border-top: 0.5pt solid rgba(22, 22, 26, 0.15);
       font-family: "IBM Plex Mono", monospace;
       font-size: 8pt;
       text-transform: uppercase;
       letter-spacing: 0.14em;
-      color: #A8A6A0;
+      color: #8a97a8;
     }
     @bottom-right {
       content: "PAGE " counter(page) " OF " counter(pages);
       vertical-align: top;
       padding-top: 8pt;
-      border-top: 0.5pt solid rgba(26, 35, 50, 0.15);
+      border-top: 0.5pt solid rgba(22, 22, 26, 0.15);
       font-family: "IBM Plex Mono", monospace;
       font-size: 8pt;
       text-transform: uppercase;
       letter-spacing: 0.14em;
-      color: #A8A6A0;
+      color: #8a97a8;
     }
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    background: #F4F1EA;
+    background: #ffffff;
     font-family: "IBM Plex Sans", -apple-system, sans-serif;
     color: var(--navy);
     -webkit-font-smoothing: antialiased;
@@ -385,7 +385,7 @@
   .win-bar {
     margin-top: 8px;
     height: 4px;
-    background: rgba(26, 35, 50, 0.06);
+    background: rgba(22, 22, 26, 0.06);
   }
   .win-bar .fill {
     height: 100%;

@@ -283,8 +283,8 @@ def generate_qr_svg(url: str = "https://www.lockeoperations.com") -> str:
     buf = io.BytesIO()
     img.save(buf)
     svg = buf.getvalue().decode()
-    svg = svg.replace("#000000", "#1A2332").replace('fill="black"', 'fill="#1A2332"')
-    svg = svg.replace("<svg ", '<svg style="background:#F4F1EA" ', 1)
+    svg = svg.replace("#000000", "#16161a").replace('fill="black"', 'fill="#16161a"')
+    svg = svg.replace("<svg ", '<svg style="background:#ffffff" ', 1)
     return svg
 
 
