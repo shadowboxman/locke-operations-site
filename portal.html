@@ -9,13 +9,13 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --navy: #1A2332;
-    --bone: #F4F1EA;
-    --concrete: #A8A6A0;
+    --navy: #16161a;
+    --bone: #f4f4f5;
+    --concrete: #8a97a8;
     --oxide: #F25A1A;
-    --hairline: rgba(26, 35, 50, 0.10);
-    --hairline-strong: rgba(26, 35, 50, 0.22);
-    --surface: #FAF8F2;
+    --hairline: rgba(22, 22, 26, 0.10);
+    --hairline-strong: rgba(22, 22, 26, 0.22);
+    --surface: #ffffff;
     --topbar-h: 64px;
     --sidebar-w: 240px;
   }
@@ -599,7 +599,7 @@
   .ui-modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(26, 35, 50, 0.55);
+    background: rgba(22, 22, 26, 0.55);
     display: none;
     align-items: flex-start;
     justify-content: center;
@@ -672,15 +672,15 @@
     text-align: center;
   }
   .status-open {
-    background: rgba(168, 65, 46, 0.12);
+    background: rgba(242, 90, 26, 0.10);
     color: var(--oxide);
   }
   .status-progress {
-    background: rgba(26, 35, 50, 0.10);
+    background: rgba(22, 22, 26, 0.10);
     color: var(--navy);
   }
   .status-resolved {
-    background: rgba(168, 65, 46, 0.06);
+    background: rgba(242, 90, 26, 0.06);
     color: var(--concrete);
   }
 
@@ -725,7 +725,7 @@
       position: fixed;
       inset: 0;
       top: var(--topbar-h);
-      background: rgba(26, 35, 50, 0.45);
+      background: rgba(22, 22, 26, 0.45);
       z-index: 55;
       opacity: 0;
       pointer-events: none;
@@ -925,9 +925,9 @@
           <div id="recentActivity">
             <div class="empty">
               <svg class="empty-mark" width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="16" cy="16" r="12" fill="none" stroke="#1A2332" stroke-width="1.5"/>
-                <line x1="16" y1="4" x2="16" y2="28" stroke="#1A2332" stroke-width="1.5"/>
-                <line x1="4" y1="16" x2="28" y2="16" stroke="#1A2332" stroke-width="1.5"/>
+                <circle cx="16" cy="16" r="12" fill="none" stroke="#16161a" stroke-width="1.5"/>
+                <line x1="16" y1="4" x2="16" y2="28" stroke="#16161a" stroke-width="1.5"/>
+                <line x1="4" y1="16" x2="28" y2="16" stroke="#16161a" stroke-width="1.5"/>
               </svg>
               <div class="empty-title">Nothing yet</div>
               <div class="empty-sub">Issues you submit and documents we upload will appear here.</div>
@@ -1468,16 +1468,16 @@
 
     if (!me) {
       const setup = lastStatus === 401;
-      const link = 'style="color:#1A2332;"';
+      const link = 'style="color:#16161a;"';
       document.body.innerHTML =
-        '<div style="padding:60px;text-align:center;font-family:IBM Plex Sans,sans-serif;color:#1A2332;">' +
+        '<div style="padding:60px;text-align:center;font-family:IBM Plex Sans,sans-serif;color:#16161a;">' +
         (setup
           ? '<h1 style="font-weight:600;font-size:22px;margin-bottom:12px;">Setting up your account</h1>' +
-            '<p style="color:#A8A6A0;">This can take a moment right after you accept an invitation. ' +
+            '<p style="color:#8a97a8;">This can take a moment right after you accept an invitation. ' +
             '<a href="#" onclick="location.reload();return false;" ' + link + '>Reload</a>, ' +
             'or email <a href="mailto:hello@lockeoperations.com" ' + link + '>hello@lockeoperations.com</a> if it persists.</p>'
           : '<h1 style="font-weight:600;font-size:22px;margin-bottom:12px;">Portal temporarily unavailable</h1>' +
-            '<p style="color:#A8A6A0;"><a href="#" onclick="location.reload();return false;" ' + link + '>Reload</a>, ' +
+            '<p style="color:#8a97a8;"><a href="#" onclick="location.reload();return false;" ' + link + '>Reload</a>, ' +
             'or email <a href="mailto:hello@lockeoperations.com" ' + link + '>hello@lockeoperations.com</a> if this persists.</p>') +
         '</div>';
       return;
@@ -2668,10 +2668,10 @@
       appearance: {
         variables: {
           colorPrimary: '#F25A1A',
-          colorText: '#1A2332',
-          colorTextSecondary: '#A8A6A0',
-          colorBackground: '#F4F1EA',
-          colorInputBackground: '#FAF8F2',
+          colorText: '#16161a',
+          colorTextSecondary: '#8a97a8',
+          colorBackground: '#f4f4f5',
+          colorInputBackground: '#ffffff',
           borderRadius: '0',
           fontFamily: '"IBM Plex Sans", -apple-system, sans-serif',
           fontFamilyButtons: '"IBM Plex Sans", -apple-system, sans-serif',
@@ -2797,9 +2797,9 @@
       el.innerHTML = `
         <div class="empty">
           <svg class="empty-mark" width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="16" cy="16" r="12" fill="none" stroke="#1A2332" stroke-width="1.5"/>
-            <line x1="16" y1="4" x2="16" y2="28" stroke="#1A2332" stroke-width="1.5"/>
-            <line x1="4" y1="16" x2="28" y2="16" stroke="#1A2332" stroke-width="1.5"/>
+            <circle cx="16" cy="16" r="12" fill="none" stroke="#16161a" stroke-width="1.5"/>
+            <line x1="16" y1="4" x2="16" y2="28" stroke="#16161a" stroke-width="1.5"/>
+            <line x1="4" y1="16" x2="28" y2="16" stroke="#16161a" stroke-width="1.5"/>
           </svg>
           <div class="empty-title">Nothing yet</div>
           <div class="empty-sub">Requests you submit and documents we upload will appear here.</div>
