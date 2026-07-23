@@ -3,206 +3,61 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>Locke Operations — Client login</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
+  /* STEEL SYSTEM — auth pages (login.html / signup.html) */
   :root {
-    --navy: #1A2332;
-    --bone: #F4F1EA;
-    --concrete: #A8A6A0;
-    --oxide: #F25A1A;
-    --hairline: rgba(26, 35, 50, 0.10);
-    --hairline-strong: rgba(26, 35, 50, 0.22);
+    --g0: #101014; --g1: #15151a; --g2: #191920; --g3: #22222a; --g4: #2c2c34;
+    --steel: #8a97a8; --steel-lt: #aab5c2; --text-mute: #9b9ba3; --text: #f5f5f5; --white: #ffffff;
+    --oxide: #f25a1a;
+    --hairline: rgba(245, 245, 245, 0.10); --hairline-strong: rgba(245, 245, 245, 0.22);
+    --navy: #101014; --bone: #f5f5f5; --concrete: #8a97a8;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body {
-    background: var(--bone);
-    color: var(--navy);
-    font-family: "IBM Plex Sans", -apple-system, sans-serif;
-    font-size: 15px;
-    line-height: 1.55;
-    -webkit-font-smoothing: antialiased;
-    min-height: 100vh;
-  }
-  .page {
-    min-height: 100vh;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-  }
+  html, body { background: var(--g0); color: var(--text); font-family: "IBM Plex Sans", -apple-system, sans-serif; font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  .page { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; }
 
-  /* LEFT — sign-in column */
-  .form-side {
-    padding: 40px 60px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-  }
-  .topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .wordmark {
-    font-family: "IBM Plex Sans", sans-serif;
-    font-weight: 600;
-    font-size: 18px;
-    letter-spacing: 0.06em;
-    color: var(--navy);
-    text-decoration: none;
-  }
+  .form-side { padding: 40px 60px; display: flex; flex-direction: column; justify-content: space-between; background: var(--g0); }
+  .topbar { display: flex; justify-content: space-between; align-items: center; }
+  .wordmark { font-family: "IBM Plex Sans", sans-serif; font-weight: 600; font-size: 18px; letter-spacing: 0.06em; color: var(--white); text-decoration: none; }
   .wordmark .dot { color: var(--oxide); }
-  .back-link {
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--navy);
-    text-decoration: none;
-    padding: 6px 0;
-    border-bottom: 1px solid transparent;
-  }
-  .back-link:hover { border-bottom-color: var(--navy); }
+  .back-link { font-family: "IBM Plex Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--steel); text-decoration: none; padding: 6px 0; border-bottom: 1px solid transparent; transition: color 0.15s ease, border-color 0.15s ease; }
+  .back-link:hover { color: var(--text); border-bottom-color: var(--steel); }
 
-  .form-wrap {
-    max-width: 420px;
-    width: 100%;
-    margin: 0 auto;
-    padding: 40px 0;
-  }
-  .eyebrow {
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: var(--concrete);
-    margin-bottom: 14px;
-  }
-  h1 {
-    font-family: "IBM Plex Sans", sans-serif;
-    font-weight: 600;
-    font-size: 32px;
-    letter-spacing: -0.015em;
-    line-height: 1.15;
-    color: var(--navy);
-    margin-bottom: 14px;
-  }
-  .subtitle {
-    font-size: 15px;
-    color: var(--navy);
-    margin-bottom: 32px;
-    line-height: 1.55;
-  }
+  .form-wrap { max-width: 420px; width: 100%; margin: 0 auto; padding: 40px 0; }
+  .eyebrow { font-family: "IBM Plex Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--steel); margin-bottom: 14px; }
+  h1 { font-family: "IBM Plex Sans", sans-serif; font-weight: 600; font-size: 32px; letter-spacing: -0.015em; line-height: 1.15; color: var(--white); margin-bottom: 14px; }
+  .subtitle { font-size: 15px; color: var(--text-mute); margin-bottom: 32px; line-height: 1.55; }
 
-  /* Container for Clerk's mounted SignIn component */
-  #clerk-signin {
-    min-height: 360px;
-    /* Note: do NOT set overflow-x: hidden here. Per CSS spec, when one axis is
-       'hidden' and the other is 'visible', the visible axis is coerced to 'auto',
-       which clips the OTP box focus ring and the top of the boxes themselves. */
-    overflow: visible;
-  }
-  /* Narrow phones only: clip the 'Last used' pill that overflows horizontally.
-     Keep overflow-y explicit so the OTP boxes don't get clipped vertically. */
-  @media (max-width: 500px) {
-    #clerk-signin {
-      overflow-x: clip;
-      overflow-y: visible;
-    }
-  }
+  #clerk-signin, #clerk-signup { min-height: 360px; overflow: visible; }
+  @media (max-width: 500px) { #clerk-signin, #clerk-signup { overflow-x: clip; overflow-y: visible; } }
 
-  /* Loading state shown until Clerk mounts */
-  .signin-loading {
-    padding: 60px 0;
-    text-align: center;
-    color: var(--concrete);
-    font-size: 14px;
-  }
-  .signin-loading .pulse {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    background: var(--oxide);
-    border-radius: 50%;
-    animation: pulse 1.4s infinite ease-in-out;
-    margin-right: 8px;
-    vertical-align: middle;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 0.3; }
-    50%      { opacity: 1; }
-  }
+  .signin-loading, .signup-loading { padding: 60px 0; text-align: center; color: var(--steel); font-size: 14px; }
+  .signin-loading .pulse, .signup-loading .pulse { display: inline-block; width: 8px; height: 8px; background: var(--oxide); border-radius: 50%; animation: pulse 1.4s infinite ease-in-out; margin-right: 8px; vertical-align: middle; }
+  @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 
-  .help {
-    font-size: 13px;
-    color: var(--concrete);
-    margin-top: 24px;
-    line-height: 1.7;
-  }
-  .help a { color: var(--navy); text-decoration: underline; }
+  .help { font-size: 13px; color: var(--text-mute); margin-top: 24px; line-height: 1.7; }
+  .help a { color: var(--text); text-decoration: underline; }
 
-  .footer-meta {
-    display: flex;
-    justify-content: space-between;
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--concrete);
-  }
+  .footer-meta { display: flex; justify-content: space-between; font-family: "IBM Plex Mono", monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--steel); }
 
-  /* RIGHT — quote / trust panel */
-  .quote-side {
-    background: var(--navy);
-    color: var(--bone);
-    padding: 60px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    position: relative;
-  }
-  .quote-mark {
-    position: absolute;
-    top: 60px;
-    right: 60px;
-    width: 32px;
-    height: 32px;
-  }
+  /* RIGHT — trust panel: alt surface + engineering grid */
+  .quote-side { background: var(--g1); color: var(--text); padding: 60px; display: flex; flex-direction: column; justify-content: space-between; position: relative; border-left: 1px solid var(--hairline); overflow: hidden; }
+  .quote-side::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image: linear-gradient(rgba(138,151,168,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(138,151,168,0.05) 1px, transparent 1px);
+    background-size: 56px 56px; mask-image: radial-gradient(ellipse 90% 80% at 50% 0%, black 30%, transparent 78%); }
+  .quote-side > * { position: relative; }
+  .quote-mark { position: absolute; top: 60px; right: 60px; width: 32px; height: 32px; z-index: 1; }
   .quote-body { max-width: 480px; }
-  .quote-eyebrow {
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: var(--concrete);
-    margin-bottom: 24px;
-  }
-  .quote-text {
-    font-family: "IBM Plex Sans", sans-serif;
-    font-weight: 500;
-    font-size: 26px;
-    line-height: 1.35;
-    letter-spacing: -0.01em;
-    color: var(--bone);
-    margin-bottom: 28px;
-  }
-  .quote-attr {
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--concrete);
-    line-height: 1.7;
-  }
-  .quote-attr .name { color: var(--bone); }
-  .quote-footer {
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--concrete);
-  }
+  .quote-eyebrow { font-family: "IBM Plex Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--steel); margin-bottom: 24px; }
+  .quote-text { font-family: "IBM Plex Sans", sans-serif; font-weight: 500; font-size: 26px; line-height: 1.35; letter-spacing: -0.01em; color: var(--white); margin-bottom: 28px; }
+  .quote-attr { font-family: "IBM Plex Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--steel); line-height: 1.7; }
+  .quote-attr .name { color: var(--text); }
+  .quote-footer { font-family: "IBM Plex Mono", monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--steel); }
 
   @media (max-width: 900px) {
     .page { grid-template-columns: 1fr; }
@@ -211,8 +66,6 @@
     .form-wrap { padding: 24px 0; }
     h1 { font-size: 28px; }
   }
-
-  /* Very narrow phones: shrink padding so Clerk's wider components fit */
   @media (max-width: 500px) {
     .form-side { padding: 24px 16px; }
     .form-wrap { padding: 16px 0; }
@@ -220,14 +73,7 @@
     .subtitle { font-size: 14px; }
   }
 
-  /* OTP boxes: Clerk uses `input-otp` library. The library sets a fixed
-     `height: var(--root-height)` on its container, and Clerk wraps it in
-     several layers (cl-rootBox, cl-card, cl-formField, cl-formFieldRow,
-     cl-otpCodeField, cl-otpCodeFieldInputContainer). Any of those with
-     `overflow: hidden` will clip the focus ring (and on some versions
-     clip the top of the boxes themselves). Force `overflow: visible` all
-     the way up, set --root-height larger than the input so the focus
-     ring has breathing room, and add explicit padding for safety. */
+  /* OTP boxes — structural fix carried over verbatim (color-agnostic) */
   .form-wrap .cl-rootBox,
   .form-wrap .cl-card,
   .form-wrap .cl-cardBox,
@@ -235,72 +81,30 @@
   .form-wrap .cl-formFieldRow,
   .form-wrap .cl-otpCodeField,
   .form-wrap .cl-otpCodeFieldInputContainer,
-  .form-wrap [data-input-otp-container] {
-    overflow: visible !important;
-  }
+  .form-wrap [data-input-otp-container] { overflow: visible !important; }
   .form-wrap .cl-otpCodeFieldInputContainer,
-  .form-wrap [data-input-otp-container] {
-    display: block !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-    min-height: 56px !important;
-    padding: 4px 0 !important;
-    /* Keep --root-height slightly larger than input height so the focus
-       ring (rendered via box-shadow outside the input) isn't clipped. */
-    --root-height: 56px;
-  }
-  .form-wrap .cl-otpCodeFieldInputs {
-    display: flex !important;
-    gap: 8px !important;
-    width: 100% !important;
-    justify-content: center !important;
-    overflow: visible !important;
-    height: auto !important;
-    padding: 2px 0 !important;
-  }
+  .form-wrap [data-input-otp-container] { display: block !important; width: 100% !important; max-width: 100% !important; height: auto !important; min-height: 56px !important; padding: 4px 0 !important; --root-height: 56px; }
+  .form-wrap .cl-otpCodeFieldInputs { display: flex !important; gap: 8px !important; width: 100% !important; justify-content: center !important; overflow: visible !important; height: auto !important; padding: 2px 0 !important; }
   .form-wrap .cl-otpCodeFieldInput,
   .form-wrap [data-testid="otp-input-segment"],
-  .form-wrap [data-input-otp-slot] {
-    flex: 0 0 auto !important;
-    width: 44px !important;
-    height: 48px !important;
-    min-width: 0 !important;
-    max-width: none !important;
-    box-sizing: border-box !important;
-    line-height: 48px !important;
-  }
+  .form-wrap [data-input-otp-slot] { flex: 0 0 auto !important; width: 44px !important; height: 48px !important; min-width: 0 !important; max-width: none !important; box-sizing: border-box !important; line-height: 48px !important; }
   @media (max-width: 500px) {
     .form-wrap .cl-otpCodeFieldInputs { gap: 6px !important; }
     .form-wrap .cl-otpCodeFieldInputContainer,
-    .form-wrap [data-input-otp-container] {
-      --root-height: 52px;
-      min-height: 52px !important;
-    }
+    .form-wrap [data-input-otp-container] { --root-height: 52px; min-height: 52px !important; }
     .form-wrap .cl-otpCodeFieldInput,
     .form-wrap [data-testid="otp-input-segment"],
-    .form-wrap [data-input-otp-slot] {
-      width: 40px !important;
-      height: 44px !important;
-      line-height: 44px !important;
-    }
+    .form-wrap [data-input-otp-slot] { width: 40px !important; height: 44px !important; line-height: 44px !important; }
   }
   @media (max-width: 380px) {
     .form-wrap .cl-otpCodeFieldInputs { gap: 4px !important; }
     .form-wrap .cl-otpCodeFieldInputContainer,
-    .form-wrap [data-input-otp-container] {
-      --root-height: 48px;
-      min-height: 48px !important;
-    }
+    .form-wrap [data-input-otp-container] { --root-height: 48px; min-height: 48px !important; }
     .form-wrap .cl-otpCodeFieldInput,
     .form-wrap [data-testid="otp-input-segment"],
-    .form-wrap [data-input-otp-slot] {
-      width: 36px !important;
-      height: 40px !important;
-      line-height: 40px !important;
-    }
+    .form-wrap [data-input-otp-slot] { width: 36px !important; height: 40px !important; line-height: 40px !important; }
   }
-</style>
+  </style>
 </head>
 <body>
 <div class="page">
@@ -349,8 +153,8 @@
         Every workflow we build for you lives here. Status, monthly review, the runbook, the people on our team accountable for it, and the contract.
       </div>
       <div class="quote-attr">
-        <span class="name">Audit · Build · Run</span><br>
-        Three packages, one workflow, one result
+        <span class="name">Done for you · We build it · We keep it running</span><br>
+        One workflow. One result.
       </div>
     </div>
 
@@ -391,8 +195,8 @@
     }
     if (!window.Clerk) {
       document.getElementById('clerk-signin').innerHTML =
-        '<div class="signin-loading" style="color:#1A2332;">Sign-in failed to load. ' +
-        '<a href="#" onclick="window.location.reload();return false;" style="color:#1A2332;text-decoration:underline;">Refresh</a> ' +
+        '<div class="signin-loading" style="color:#f5f5f5;">Sign-in failed to load. ' +
+        '<a href="#" onclick="window.location.reload();return false;" style="color:#f5f5f5;text-decoration:underline;">Refresh</a> ' +
         'or email hello@lockeoperations.com.</div>';
       return;
     }
@@ -432,13 +236,13 @@
         },
         variables: {
           colorPrimary: '#F25A1A',
-          colorText: '#1A2332',
-          colorTextSecondary: '#A8A6A0',
-          colorBackground: '#F4F1EA',
-          colorInputBackground: '#FAF8F2',
-          colorInputText: '#1A2332',
+          colorText: '#f5f5f5',
+          colorTextSecondary: '#8a97a8',
+          colorBackground: '#101014',
+          colorInputBackground: '#191920',
+          colorInputText: '#f5f5f5',
           colorDanger: '#F25A1A',
-          colorNeutral: '#1A2332',
+          colorNeutral: '#f5f5f5',
           borderRadius: '0',
           fontFamily: '"IBM Plex Sans", -apple-system, sans-serif',
           // Default buttons (incl. social "Continue with Google") use sans.
@@ -487,7 +291,7 @@
           // Social ("Continue with Google") button.
           socialButtonsBlockButton: {
             borderRadius: '0',
-            border: '1px solid rgba(26, 35, 50, 0.22)',
+            border: '1px solid rgba(245, 245, 245, 0.22)',
             padding: '12px 16px',
             fontFamily: '"IBM Plex Sans", sans-serif',
             fontWeight: '400',
@@ -501,7 +305,7 @@
             margin: '20px 0',
           },
           dividerLine: {
-            backgroundColor: 'rgba(26, 35, 50, 0.10)',
+            backgroundColor: 'rgba(245, 245, 245, 0.10)',
             height: '1px',
           },
           dividerText: {
@@ -509,7 +313,7 @@
             fontSize: '10px',
             textTransform: 'uppercase',
             letterSpacing: '0.14em',
-            color: '#A8A6A0',
+            color: '#8a97a8',
           },
 
           // Form field labels: mono + uppercase to match the rest of the UI.
@@ -518,12 +322,12 @@
             fontSize: '10px',
             textTransform: 'uppercase',
             letterSpacing: '0.12em',
-            color: '#1A2332',
+            color: '#f5f5f5',
             fontWeight: '500',
           },
           formFieldInput: {
             borderRadius: '0',
-            border: '1px solid rgba(26, 35, 50, 0.22)',
+            border: '1px solid rgba(245, 245, 245, 0.22)',
             padding: '10px 12px',
             fontSize: '14px',
             fontFamily: '"IBM Plex Sans", sans-serif',
@@ -540,7 +344,7 @@
             fontWeight: '500',
             padding: '12px 22px',
             boxShadow: 'none',
-            '&:hover': { backgroundColor: '#1A2332' },
+            '&:hover': { backgroundColor: '#ffffff', color: '#101014' },
           },
 
           // "Last used" pill on the email input. Constrain so it doesn't
@@ -548,7 +352,7 @@
           formFieldHintText: {
             fontFamily: '"IBM Plex Mono", monospace',
             fontSize: '10px',
-            color: '#A8A6A0',
+            color: '#8a97a8',
             maxWidth: '60px',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -557,9 +361,9 @@
 
           // Identity preview block (when returning user).
           identityPreview: {
-            border: '1px solid rgba(26, 35, 50, 0.22)',
+            border: '1px solid rgba(245, 245, 245, 0.22)',
             borderRadius: '0',
-            background: '#FAF8F2',
+            background: '#191920',
           },
 
           // Verification code (OTP) input row + individual boxes.
@@ -571,7 +375,7 @@
           },
           otpCodeFieldInput: {
             borderRadius: '0',
-            border: '1px solid rgba(26, 35, 50, 0.22)',
+            border: '1px solid rgba(245, 245, 245, 0.22)',
             width: '100%',
             maxWidth: '48px',
             minWidth: '36px',

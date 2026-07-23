@@ -3,19 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>Locke Operations — Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --navy: #1A2332;
-    --bone: #F4F1EA;
-    --concrete: #A8A6A0;
+    --navy: #16161a;
+    --bone: #f4f4f5;
+    --concrete: #8a97a8;
     --oxide: #F25A1A;
-    --hairline: rgba(26, 35, 50, 0.10);
-    --hairline-strong: rgba(26, 35, 50, 0.22);
-    --surface: #FAF8F2;
+    --hairline: rgba(22, 22, 26, 0.10);
+    --hairline-strong: rgba(22, 22, 26, 0.22);
+    --surface: #ffffff;
     --topbar-h: 64px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -274,9 +275,9 @@
     text-transform: uppercase;
     letter-spacing: 0.12em;
   }
-  .badge-active { background: rgba(26, 35, 50, 0.08); color: var(--navy); }
+  .badge-active { background: rgba(22, 22, 26, 0.08); color: var(--navy); }
   .badge-suspended { background: rgba(242, 90, 26, 0.12); color: var(--oxide); }
-  .badge-archived { background: rgba(168, 65, 46, 0.06); color: var(--concrete); }
+  .badge-archived { background: rgba(242, 90, 26, 0.06); color: var(--concrete); }
   .badge-internal { background: var(--navy); color: var(--bone); }
 
   /* CARD LAYOUT (mobile alternative to tables) */
@@ -396,7 +397,7 @@
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(26, 35, 50, 0.55);
+    background: rgba(22, 22, 26, 0.55);
     display: none;
     align-items: flex-start;
     justify-content: center;
@@ -566,27 +567,27 @@
   }
 
   /* CONTACTS + FUNNEL */
-  .funnel { border: 1px solid var(--hairline-strong, rgba(26,35,50,0.22)); background: #fff; padding: 20px 22px; margin-bottom: 22px; }
+  .funnel { border: 1px solid var(--hairline-strong, rgba(22, 22, 26,0.22)); background: #fff; padding: 20px 22px; margin-bottom: 22px; }
   .funnel-title { font-family: 'IBM Plex Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--concrete); margin-bottom: 14px; }
   .funnel-row { display: grid; grid-template-columns: 90px 1fr 130px; gap: 12px; align-items: center; padding: 5px 0; }
   .funnel-label { font-size: 13px; color: var(--navy); }
-  .funnel-track { background: rgba(26,35,50,0.06); height: 18px; position: relative; }
+  .funnel-track { background: rgba(22, 22, 26,0.06); height: 18px; position: relative; }
   .funnel-bar { background: var(--navy); height: 100%; min-width: 2px; transition: width 0.3s ease; }
   .funnel-bar.stage-lost { background: var(--concrete); }
   .funnel-count { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--navy); text-align: right; white-space: nowrap; }
-  .funnel-splits { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(26,35,50,0.10); }
+  .funnel-splits { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(22, 22, 26,0.10); }
   .funnel-chip { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--concrete); }
   .funnel-chip b { color: var(--navy); font-weight: 600; }
   .contacts-toolbar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
   .contacts-toolbar input, .contacts-toolbar select {
     font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; color: var(--navy);
-    background: #fff; border: 1px solid rgba(26,35,50,0.22); padding: 8px 11px; border-radius: 0;
+    background: #fff; border: 1px solid rgba(22, 22, 26,0.22); padding: 8px 11px; border-radius: 0;
   }
   .contacts-toolbar input { flex: 1; min-width: 200px; }
   .snapshot-banner { background: rgba(242,90,26,0.10); border: 1px solid var(--oxide); color: var(--navy); font-size: 13px; padding: 10px 14px; margin-bottom: 14px; display: none; }
-  .stage-pill { font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; padding: 3px 8px; background: rgba(26,35,50,0.08); color: var(--navy); }
-  .stage-pill.s-lost { background: rgba(168,166,160,0.25); color: var(--concrete); }
-  .stage-pill.s-run { background: var(--navy); color: var(--bone, #F4F1EA); }
+  .stage-pill { font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; padding: 3px 8px; background: rgba(22, 22, 26,0.08); color: var(--navy); }
+  .stage-pill.s-lost { background: rgba(138, 151, 168,0.25); color: var(--concrete); }
+  .stage-pill.s-run { background: var(--navy); color: var(--bone, #f4f4f5); }
 
   /* Modal footer with left/right button groups (contact modal) */
   .modal-footer.split { justify-content: space-between; flex-wrap: wrap; row-gap: 10px; }
@@ -759,7 +760,7 @@
             <label class="form-label" for="cNotes">Notes</label>
             <textarea class="form-input" id="cNotes" rows="3" maxlength="5000"></textarea>
           </div>
-          <div id="contactAssessmentInfo" style="display:none; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--concrete); border-top:1px solid rgba(26,35,50,0.10); padding-top:10px; margin-top:4px; line-height:1.7;"></div>
+          <div id="contactAssessmentInfo" style="display:none; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--concrete); border-top:1px solid rgba(22, 22, 26,0.10); padding-top:10px; margin-top:4px; line-height:1.7;"></div>
         </form>
       </div>
       <div class="modal-footer split">
@@ -1497,7 +1498,22 @@
               <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${fmtDate(c.createdate)}</td>
             </tr>`).join('')}
         </tbody>
-      </table>`;
+      </table>
+      <div class="cards">
+        ${contacts.map(c => `
+          <div class="card" ${editable ? `onclick="openContactModal('${c.id}')" style="cursor:pointer;"` : ''}>
+            <div class="card-row">
+              <div class="card-title">${escapeHtml([c.firstname, c.lastname].filter(Boolean).join(' ') || '—')}</div>
+              <span class="stage-pill s-${escapeHtml(c.locke_stage || 'none')}">${escapeHtml(stageLabel(c.locke_stage))}</span>
+            </div>
+            <div class="card-sub" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--concrete);">${escapeHtml(c.email || '')}</div>
+            <div class="card-field"><div class="card-field-label">Company</div><div class="card-field-value">${escapeHtml(c.company || '—')}</div></div>
+            <div class="card-field"><div class="card-field-label">Industry</div><div class="card-field-value">${escapeHtml(c.assessment_industry || '—')}</div></div>
+            <div class="card-field"><div class="card-field-label">Readiness</div><div class="card-field-value">${escapeHtml(c.assessment_readiness_band || '—')}</div></div>
+            <div class="card-field"><div class="card-field-label">Est. value</div><div class="card-field-value">${fmtMoney0(c.assessment_annual_midpoint) || '—'}</div></div>
+            <div class="card-field"><div class="card-field-label">Created</div><div class="card-field-value">${fmtDate(c.createdate)}</div></div>
+          </div>`).join('')}
+      </div>`;
   }
 
   async function loadFunnel() {

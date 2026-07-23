@@ -8,52 +8,52 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --navy: #1A2332;
-    --bone: #F4F1EA;
-    --concrete: #A8A6A0;
+    --navy: #16161a;
+    --bone: #ffffff;
+    --concrete: #8a97a8;
     --oxide: #F25A1A;
-    --hairline: rgba(26, 35, 50, 0.10);
+    --hairline: rgba(22, 22, 26, 0.10);
   }
 
   /* PAGE SETUP — running elements for header/footer */
   @page {
     size: letter;
     margin: 1in 0.85in 0.95in 0.85in;
-    background: #F4F1EA;
+    background: #ffffff;
     @top-left {
       content: element(brand-header);
       width: 100%;
       vertical-align: bottom;
       padding-bottom: 8pt;
-      border-bottom: 0.5pt solid rgba(26, 35, 50, 0.15);
+      border-bottom: 0.5pt solid rgba(22, 22, 26, 0.15);
     }
     @bottom-left {
       content: element(footer-left);
       vertical-align: top;
       padding-top: 8pt;
-      border-top: 0.5pt solid rgba(26, 35, 50, 0.15);
+      border-top: 0.5pt solid rgba(22, 22, 26, 0.15);
       font-family: "IBM Plex Mono", monospace;
       font-size: 8pt;
       text-transform: uppercase;
       letter-spacing: 0.14em;
-      color: #A8A6A0;
+      color: #8a97a8;
     }
     @bottom-right {
       content: "PAGE " counter(page) " OF " counter(pages);
       vertical-align: top;
       padding-top: 8pt;
-      border-top: 0.5pt solid rgba(26, 35, 50, 0.15);
+      border-top: 0.5pt solid rgba(22, 22, 26, 0.15);
       font-family: "IBM Plex Mono", monospace;
       font-size: 8pt;
       text-transform: uppercase;
       letter-spacing: 0.14em;
-      color: #A8A6A0;
+      color: #8a97a8;
     }
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    background: #F4F1EA;
+    background: #ffffff;
     font-family: "IBM Plex Sans", -apple-system, sans-serif;
     color: var(--navy);
     -webkit-font-smoothing: antialiased;
@@ -173,7 +173,8 @@
   .equivs {
     margin-bottom: 32px;
     padding: 18px 22px;
-    background: rgba(242, 90, 26, 0.05);
+    background: #f5f5f6;
+    border: 1px solid var(--hairline);
     border-left: 4px solid var(--oxide);
   }
   .equivs-label {
@@ -340,13 +341,13 @@
     color: var(--concrete);
   }
 
-  /* PAGE 3 - WINS + CTA + QR */
+  /* PAGE 3 - WINS + CTA + QR — ranked list, drawn to scale by annual value */
   .wins {
     border-top: 1px solid var(--navy);
     margin-bottom: 36px;
   }
   .win {
-    padding: 12px 0;
+    padding: 16px 0;
     border-bottom: 1px solid var(--hairline);
   }
   .win:last-child {
@@ -354,21 +355,25 @@
   }
   .win-header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 18px;
+    align-items: baseline;
+    gap: 16px;
+  }
+  .win-rank {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 300;
+    font-size: 22pt;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--concrete);
+    width: 34pt;
+    flex-shrink: 0;
   }
   .win-text { flex: 1; }
-  .win-title-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 4px;
-  }
   .win-title {
     font-weight: 600;
     font-size: 13pt;
     color: var(--navy);
+    margin-bottom: 3px;
   }
   .win-meta {
     font-size: 10pt;
@@ -383,27 +388,15 @@
     white-space: nowrap;
   }
   .win-bar {
-    margin-top: 8px;
-    height: 4px;
-    background: rgba(26, 35, 50, 0.06);
+    margin-top: 12px;
+    margin-left: 50pt;
+    height: 5px;
+    background: rgba(22, 22, 26, 0.06);
   }
   .win-bar .fill {
     height: 100%;
     background: var(--oxide);
   }
-  .win-badge {
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 8pt;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    padding: 3px 9px;
-    border-radius: 2px;
-    white-space: nowrap;
-  }
-  .win-badge.easy { color: #047857; background: rgba(5, 150, 105, 0.12); }
-  .win-badge.med  { color: #92400e; background: rgba(180, 83, 9, 0.12); }
-  .win-badge.hard { color: #991b1b; background: rgba(185, 28, 28, 0.12); }
 
   .next-step .body { margin-bottom: 18px; }
   .cta-grid {
@@ -568,9 +561,9 @@
 
   <div class="next-step">
     <div class="eyebrow">NEXT STEP</div>
-    <h2 class="section-title">Want a human to validate this number?</h2>
+    <h2 class="section-title">Ready to get started?</h2>
     <p class="body">
-      Thirty-minute call. We'll walk your stack, confirm what's achievable, and tell you what we'd fix first. No pressure. No slides.
+      Get in touch and we'll set up a short call to walk your stack, confirm what's achievable, and scope the first thing we'd fix. No pressure. No slides.
     </p>
 
     <div class="cta-grid">

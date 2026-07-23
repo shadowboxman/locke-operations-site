@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Locke Operations favicon. "LO" monogram, off-white L + oxide O on near-black. Designed to remain legible at 16x16. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Locke Operations">
+  <title>Locke Operations</title>
+  <defs>
+    <style>
+      .mono { font-family: "IBM Plex Sans", -apple-system, system-ui, sans-serif; font-weight: 700; font-size: 20px; letter-spacing: -0.02em; }
+      .bg { fill: #101014; }
+      .navy { fill: #f5f5f5; }
+      .oxide { fill: #F25A1A; }
+    </style>
+  </defs>
+  <rect class="bg" width="32" height="32" rx="3" />
+  <text x="16" y="23" class="mono" text-anchor="middle"><tspan class="navy">L</tspan><tspan class="oxide">O</tspan></text>
+</svg>

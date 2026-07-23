@@ -148,16 +148,19 @@ class Contact(BaseModel):
 
 
 class Answers(BaseModel):
+    # Upper bounds mirror the assessment.html UI ranges (sliders + option values)
+    # so the server can't be handed impossible inputs (e.g. a readiness > 100,
+    # which needs maturity <= 50 + consistency <= 35 + volume bonus <= 15 = 100).
     industry: Literal["trades", "restoration", "hospitality", "ae", "accounting", "other"]
-    team: int = Field(ge=0, le=100000)
+    team: int = Field(ge=0, le=60)
     tasks: list[str] = Field(default_factory=list, max_length=50)
-    hours: int = Field(ge=0, le=400)
-    rate: int = Field(ge=0, le=1000)
+    hours: int = Field(ge=1, le=80)
+    rate: int = Field(ge=0, le=90)
     response: Literal["fast", "hour", "day", "slow"]
-    leads: int = Field(ge=0, le=100000)
-    value: int = Field(ge=0, le=10_000_000)
-    maturity: int = Field(ge=0, le=100)
-    consistency: int = Field(ge=0, le=100)
+    leads: int = Field(ge=0, le=350)
+    value: int = Field(ge=0, le=20_000)
+    maturity: int = Field(ge=0, le=50)
+    consistency: int = Field(ge=0, le=35)
 
     @field_validator("tasks")
     @classmethod
