@@ -233,20 +233,15 @@ def render_wins(result: dict) -> str:
     if not wins:
         return ""
     max_value = max(w["value"] for w in wins) or 1
-    badge_class = {1: "easy", 2: "med", 3: "hard"}
-    badge_label = {1: "Easy", 2: "Medium", 3: "Heavy lift"}
     parts = []
-    for w in wins:
-        diff = min(max(w["diff"], 1), 3)
+    for i, w in enumerate(wins, 1):
         bar_pct = (w["value"] / max_value) * 100
         parts.append(f'''
     <div class="win">
       <div class="win-header">
+        <span class="win-rank">{i:02d}</span>
         <div class="win-text">
-          <div class="win-title-row">
-            <span class="win-title">{w["name"]}</span>
-            <span class="win-badge {badge_class[diff]}">{badge_label[diff]}</span>
-          </div>
+          <div class="win-title">{w["name"]}</div>
           <div class="win-meta">About {w["hours"]} hrs/week saved across your team</div>
         </div>
         <div class="win-value">${w["value"]:,}/yr</div>
