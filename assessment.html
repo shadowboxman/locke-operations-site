@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Locke Operations · Value Leakage Assessment</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="description" content="Ten questions, three minutes, a real dollar number on the admin work leaking margin in your business.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Locke Operations · Value Leakage Assessment">
+<meta property="og:description" content="Ten questions, three minutes, a real dollar number on the admin work leaking margin in your business.">
+<meta property="og:url" content="https://www.lockeoperations.com/assessment">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Locke Operations · Value Leakage Assessment">
+<meta name="twitter:description" content="Ten questions, three minutes, a real dollar number on the admin work leaking margin.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1273,7 +1282,8 @@ function renderResults() {
     }
   }
   document.getElementById('book').onclick = () => {
-    alert('In production this opens your booking link (Calendly, SavvyCal, etc).');
+    // TODO: swap for the real booking URL (Calendly / Cal.com / SavvyCal) when set.
+    window.location.href = '/#contact';
   };
   document.getElementById('restart').onclick = () => {
     state.step = -1;

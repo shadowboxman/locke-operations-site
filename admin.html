@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>Locke Operations — Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1497,7 +1498,22 @@
               <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--concrete);">${fmtDate(c.createdate)}</td>
             </tr>`).join('')}
         </tbody>
-      </table>`;
+      </table>
+      <div class="cards">
+        ${contacts.map(c => `
+          <div class="card" ${editable ? `onclick="openContactModal('${c.id}')" style="cursor:pointer;"` : ''}>
+            <div class="card-row">
+              <div class="card-title">${escapeHtml([c.firstname, c.lastname].filter(Boolean).join(' ') || '—')}</div>
+              <span class="stage-pill s-${escapeHtml(c.locke_stage || 'none')}">${escapeHtml(stageLabel(c.locke_stage))}</span>
+            </div>
+            <div class="card-sub" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--concrete);">${escapeHtml(c.email || '')}</div>
+            <div class="card-field"><div class="card-field-label">Company</div><div class="card-field-value">${escapeHtml(c.company || '—')}</div></div>
+            <div class="card-field"><div class="card-field-label">Industry</div><div class="card-field-value">${escapeHtml(c.assessment_industry || '—')}</div></div>
+            <div class="card-field"><div class="card-field-label">Readiness</div><div class="card-field-value">${escapeHtml(c.assessment_readiness_band || '—')}</div></div>
+            <div class="card-field"><div class="card-field-label">Est. value</div><div class="card-field-value">${fmtMoney0(c.assessment_annual_midpoint) || '—'}</div></div>
+            <div class="card-field"><div class="card-field-label">Created</div><div class="card-field-value">${fmtDate(c.createdate)}</div></div>
+          </div>`).join('')}
+      </div>`;
   }
 
   async function loadFunnel() {
